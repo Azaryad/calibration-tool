@@ -508,6 +508,14 @@ input[type="file"]::file-selector-button {
     </p>
     <p id="cal-csv-info" style="font-size:0.84rem;color:#88aacc;margin-top:10px;"></p>
 
+    <!-- Experiment delta -->
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid #1e2d45;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:0.80rem;color:#7eb8f7;font-weight:600;white-space:nowrap;">Experiment Delta:</span>
+      <input type="number" id="cal-delta-input" step="0.1" min="0.1"
+        style="width:90px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:3px 8px;font-size:0.82rem;font-variant-numeric:tabular-nums;">
+      <span style="font-size:0.80rem;color:#8899aa;">s — shown as Δ line on each waveform, and used as the trim window in the viewer</span>
+    </div>
+
     <!-- Bandpass filter controls -->
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid #1e2d45;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:0.80rem;color:#7eb8f7;font-weight:600;white-space:nowrap;">Bandpass Filter:</span>
@@ -572,12 +580,21 @@ input[type="file"]::file-selector-button {
       <span class="tval" id="tt-time">t = 0.00 s</span><br>
       <span class="vval" id="tt-volt">V = 0.0000 V</span>
     </div>
-    <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1e2d45;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <span style="font-size:0.80rem;color:#7a99b8;">CSV trim delta:</span>
-      <input type="number" id="csv-delta-input" step="0.01" min="0.1"
-        style="width:90px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:4px 8px;font-size:0.82rem;font-variant-numeric:tabular-nums;">
-      <span style="font-size:0.80rem;color:#8899aa;">s &nbsp;— drag the window on the chart to set B1/B2</span>
-      <span id="trim-window-info" style="font-size:0.78rem;color:#557799;margin-left:auto;font-variant-numeric:tabular-nums;"></span>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1e2d45;display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:0.80rem;color:#7a99b8;">CSV trim delta:</span>
+        <input type="number" id="csv-delta-input" step="0.01" min="0.1"
+          style="width:90px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:4px 8px;font-size:0.82rem;font-variant-numeric:tabular-nums;">
+        <span style="font-size:0.80rem;color:#8899aa;">s &nbsp;— drag window to set B1/B2 · drag outside to pan</span>
+        <span id="trim-window-info" style="font-size:0.78rem;color:#557799;margin-left:auto;font-variant-numeric:tabular-nums;"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:0.78rem;color:#6688aa;white-space:nowrap;">🔍 Zoom</span>
+        <input type="range" id="chart-zoom-slider" min="0" max="95" step="1" value="0"
+          style="flex:1;accent-color:#7eb8f7;height:4px;cursor:pointer;">
+        <span id="chart-zoom-label" style="font-size:0.75rem;color:#8899aa;min-width:44px;text-align:right;font-variant-numeric:tabular-nums;">full</span>
+        <button id="chart-zoom-reset" style="padding:3px 9px;background:#1e2d45;border:1px solid #2e4060;border-radius:4px;color:#99b8d8;font-size:0.72rem;cursor:pointer;white-space:nowrap;">Reset</button>
+      </div>
     </div>
   </div>
 
@@ -607,6 +624,16 @@ let csvDelta        = 0;  // CSV trim window width (seconds)
 let trimDragging    = false;
 let trimDragStartX  = 0;
 let trimDragStartWindow = 0;
+
+// Zoom / pan state for page 3 chart
+let chartXFullMin = 0;
+let chartXFullMax = 0;
+let chartXMin     = 0;
+let chartXMax     = 0;
+let panDragging    = false;
+let panDragStartX  = 0;
+let panDragStartXMin = 0;
+let panDragStartXMax = 0;
 
 let videoFiles  = [];   // File[]
 let csvFiles    = [];   // File[]
@@ -813,6 +840,10 @@ function onFilterChange() {
   document.getElementById(id).addEventListener("input",  onFilterChange);
 });
 
+document.getElementById("cal-delta-input").addEventListener("input", () => {
+  calVideos.forEach(cv => drawCalWaveform(cv));
+});
+
 function scheduleCalFetch(cv, delay) {
   clearTimeout(_calFetchTimers[cv.filename]);
   _calFetchTimers[cv.filename] = setTimeout(() => fetchCalWaveform(cv), delay ?? 80);
@@ -886,8 +917,8 @@ function drawCalWaveform(cv) {
     if (x >= 0 && x <= W) { ctx.fillStyle = '#33ee77'; ctx.fillText('B2', Math.min(x + 3, W - 18), 13); }
   }
 
-  // Delta line (orange dashed) — shows where the other buzzer should land based on CSV delta
-  const refDelta = pendingResult ? pendingResult.experiment_duration : 0;
+  // Delta line (orange dashed) — shows where the other buzzer should land based on user delta
+  const refDelta = parseFloat(document.getElementById("cal-delta-input").value) || 0;
   if (refDelta > 0) {
     let anchorVal = "b1";
     if (cv.anchorRadios) {
@@ -933,9 +964,15 @@ function initCalibration(data) {
   pendingResult = data;
   sessionId = data.session_id;
 
-  // Show CSV info (CSV times are epoch-seconds; render duration only)
+  // Pre-fill experiment delta from CSV detection (user can override)
+  const deltaInput = document.getElementById("cal-delta-input");
+  if (!deltaInput.value || parseFloat(deltaInput.value) <= 0) {
+    deltaInput.value = data.experiment_duration.toFixed(2);
+  }
+
+  // Show CSV info
   document.getElementById("cal-csv-info").innerHTML =
-    `CH1 buzzers detected — experiment duration: <strong>${data.experiment_duration.toFixed(2)} s</strong>` +
+    `CH1 buzzers detected — auto-detected duration: <strong>${data.experiment_duration.toFixed(2)} s</strong> (adjust the delta above if needed)` +
     (data.warnings && data.warnings.length
       ? `  ·  <span style="color:#f0c040;">${data.warnings.length} warning(s) — see viewer</span>` : "");
 
@@ -1105,6 +1142,9 @@ document.getElementById("cal-continue-btn").addEventListener("click", () => {
     const b2 = parseFloat(calVideos[i].inp2.value);
     return { ...vd, buzz1_vid: b1, buzz2_vid: b2, offset: pendingResult.t_buzz1_csv - b1 };
   });
+  // Capture user-chosen delta
+  pendingResult.user_delta = parseFloat(document.getElementById("cal-delta-input").value) || pendingResult.experiment_duration;
+
   // Capture per-video anchor choices
   calVideoAnchors = calVideos.map(cv => {
     if (!cv.anchorRadios) return "b1";
@@ -1213,9 +1253,9 @@ function initViewer(data) {
     : [0, data.experiment_duration];
   appData._origBuzzAbs = data.t_buzz1_csv;
 
-  // Trim window — starts at first detected buzzer (index 0 = 0 s), width = experiment_duration
+  // Trim window — starts at first detected buzzer; width = user-chosen delta from page 2
   trimWindowStart = allBuzzRel[0];
-  csvDelta = data.experiment_duration;
+  csvDelta = data.user_delta || data.experiment_duration;
   document.getElementById("csv-delta-input").value = csvDelta.toFixed(3);
   appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
   appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
@@ -1323,8 +1363,10 @@ function buildChart() {
   // ch3Times / ch1Times are already re-zeroed relative to B1 (server does t - t_buzz1_csv)
   const initV = interp(0);
 
-  const xMin = (allBuzzRel.length ? allBuzzRel[0] : 0) - 5;
-  const xMax = (allBuzzRel.length ? allBuzzRel[allBuzzRel.length - 1] : appData.experiment_duration) + 5;
+  chartXFullMin = (allBuzzRel.length ? allBuzzRel[0] : 0) - 5;
+  chartXFullMax = (allBuzzRel.length ? allBuzzRel[allBuzzRel.length - 1] : appData.experiment_duration) + 5;
+  chartXMin = chartXFullMin;
+  chartXMax = chartXFullMax;
 
   chart = new Chart(ctx, {
     plugins: [trimWindowPlugin],
@@ -1380,8 +1422,8 @@ function buildChart() {
       scales: {
         x: {
           type: "linear",
-          min: xMin,
-          max: xMax,
+          min: chartXMin,
+          max: chartXMax,
           title: { display: true, text: "Time from B1 (s)", color: "#5577aa", font: { size: 11 } },
           grid: { color: "#1a2535" },
           ticks: { color: "#667788", font: { size: 10 } },
@@ -1459,13 +1501,53 @@ function updateWaveformCursor(masterTime) {
   ctx.fillRect(Math.max(0, x - 1), 0, 2, canvas.height);
 }
 
-// ── Trim window drag ───────────────────────────────────────────────────────
+// ── Trim window drag + zoom + pan ──────────────────────────────────────────
 function updateTrimInfo() {
   document.getElementById("trim-window-info").textContent =
     `B1: ${trimWindowStart.toFixed(2)} s  ·  B2: ${(trimWindowStart + csvDelta).toFixed(2)} s`;
 }
 
+function setChartView(lo, hi) {
+  if (!chart) return;
+  const fullSpan = chartXFullMax - chartXFullMin;
+  if (fullSpan <= 0) return;
+  const span = hi - lo;
+  // clamp
+  lo = Math.max(chartXFullMin, lo);
+  hi = Math.min(chartXFullMax, hi);
+  chartXMin = lo;
+  chartXMax = hi;
+  chart.options.scales.x.min = lo;
+  chart.options.scales.x.max = hi;
+  chart.update("none");
+
+  // update slider (0 = full view, 95 = max zoom)
+  const zoomFrac = Math.max(0, 1 - span / fullSpan);
+  const sliderVal = Math.round(zoomFrac * 95);
+  const zoomSlider = document.getElementById("chart-zoom-slider");
+  const zoomLabel  = document.getElementById("chart-zoom-label");
+  if (zoomSlider) zoomSlider.value = sliderVal;
+  if (zoomLabel) {
+    zoomLabel.textContent = sliderVal === 0 ? "full" : `${Math.round(zoomFrac * 100)}%`;
+  }
+}
+
 const forceChartEl = document.getElementById("force-chart");
+
+// Cursor feedback on mousemove (no button)
+forceChartEl.addEventListener("mousemove", e => {
+  if (!chart || !appData || trimDragging || panDragging) return;
+  const rect = forceChartEl.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const ca = chart.chartArea;
+  if (mx < ca.left || mx > ca.right) { forceChartEl.style.cursor = "default"; return; }
+  const t = chart.scales.x.getValueForPixel(mx);
+  const inside = (t >= trimWindowStart && t <= trimWindowStart + csvDelta);
+  forceChartEl.style.cursor = inside ? "ew-resize" : "grab";
+});
+forceChartEl.addEventListener("mouseleave", () => {
+  if (!trimDragging && !panDragging) forceChartEl.style.cursor = "default";
+});
 
 forceChartEl.addEventListener("mousedown", e => {
   if (!chart || !appData) return;
@@ -1473,33 +1555,110 @@ forceChartEl.addEventListener("mousedown", e => {
   const mx = e.clientX - rect.left;
   const ca = chart.chartArea;
   if (mx < ca.left || mx > ca.right) return;
-  trimDragging    = true;
-  trimDragStartX  = e.clientX;
-  trimDragStartWindow = trimWindowStart;
-  forceChartEl.classList.add("dragging");
+  const t = chart.scales.x.getValueForPixel(mx);
+  const insideTrim = (t >= trimWindowStart && t <= trimWindowStart + csvDelta);
+  if (insideTrim) {
+    trimDragging        = true;
+    trimDragStartX      = e.clientX;
+    trimDragStartWindow = trimWindowStart;
+    forceChartEl.style.cursor = "ew-resize";
+  } else {
+    panDragging       = true;
+    panDragStartX     = e.clientX;
+    panDragStartXMin  = chartXMin;
+    panDragStartXMax  = chartXMax;
+    forceChartEl.style.cursor = "grabbing";
+  }
   e.preventDefault();
 });
 
 document.addEventListener("mousemove", e => {
-  if (!trimDragging || !chart) return;
+  if (!chart) return;
   const ca      = chart.chartArea;
-  const xRange  = chart.scales.x.max - chart.scales.x.min;
+  const xRange  = chartXMax - chartXMin;
   const pxRange = ca.right - ca.left;
-  const dt = (e.clientX - trimDragStartX) / pxRange * xRange;
-  const lo = chart.scales.x.min;
-  const hi = chart.scales.x.max;
-  trimWindowStart = Math.max(lo, Math.min(hi - csvDelta, trimDragStartWindow + dt));
-  appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
-  appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
-  updateTrimInfo();
-  chart.update("none");
+  if (pxRange <= 0) return;
+
+  if (trimDragging) {
+    const dt = (e.clientX - trimDragStartX) / pxRange * xRange;
+    trimWindowStart = Math.max(chartXMin, Math.min(chartXMax - csvDelta, trimDragStartWindow + dt));
+    appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
+    appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
+    updateTrimInfo();
+    chart.update("none");
+  } else if (panDragging) {
+    const dt    = (e.clientX - panDragStartX) / pxRange * xRange;
+    const span  = panDragStartXMax - panDragStartXMin;
+    let newLo   = panDragStartXMin - dt;
+    let newHi   = newLo + span;
+    if (newLo < chartXFullMin) { newLo = chartXFullMin; newHi = newLo + span; }
+    if (newHi > chartXFullMax) { newHi = chartXFullMax; newLo = newHi - span; }
+    chartXMin = newLo;
+    chartXMax = newHi;
+    chart.options.scales.x.min = newLo;
+    chart.options.scales.x.max = newHi;
+    chart.update("none");
+  }
 });
 
 document.addEventListener("mouseup", () => {
   if (trimDragging) {
     trimDragging = false;
-    forceChartEl.classList.remove("dragging");
+    forceChartEl.style.cursor = "grab";
   }
+  if (panDragging) {
+    panDragging = false;
+    forceChartEl.style.cursor = "grab";
+  }
+});
+
+// Mouse wheel zoom (centered on cursor position)
+forceChartEl.addEventListener("wheel", e => {
+  if (!chart || !appData) return;
+  const rect = forceChartEl.getBoundingClientRect();
+  const mx   = e.clientX - rect.left;
+  const ca   = chart.chartArea;
+  if (mx < ca.left || mx > ca.right) return;
+  e.preventDefault();
+
+  const zoomFactor = e.deltaY > 0 ? 1.15 : (1 / 1.15);
+  const tAtCursor  = chart.scales.x.getValueForPixel(mx);
+  const curSpan    = chartXMax - chartXMin;
+  const newSpan    = Math.min(chartXFullMax - chartXFullMin, Math.max(2, curSpan * zoomFactor));
+  // keep cursor position fixed
+  const ratio = (tAtCursor - chartXMin) / curSpan;
+  let newLo   = tAtCursor - ratio * newSpan;
+  let newHi   = newLo + newSpan;
+  if (newLo < chartXFullMin) { newLo = chartXFullMin; newHi = newLo + newSpan; }
+  if (newHi > chartXFullMax) { newHi = chartXFullMax; newLo = newHi - newSpan; }
+  setChartView(newLo, newHi);
+}, { passive: false });
+
+// Zoom slider
+document.getElementById("chart-zoom-slider").addEventListener("input", e => {
+  if (!chart || !appData) return;
+  const frac     = parseInt(e.target.value) / 95;          // 0..1
+  const fullSpan = chartXFullMax - chartXFullMin;
+  const newSpan  = Math.max(2, fullSpan * (1 - frac));
+  // zoom toward center of current view
+  const center   = (chartXMin + chartXMax) / 2;
+  let newLo      = center - newSpan / 2;
+  let newHi      = center + newSpan / 2;
+  if (newLo < chartXFullMin) { newLo = chartXFullMin; newHi = newLo + newSpan; }
+  if (newHi > chartXFullMax) { newHi = chartXFullMax; newLo = newHi - newSpan; }
+  chartXMin = newLo;
+  chartXMax = newHi;
+  chart.options.scales.x.min = newLo;
+  chart.options.scales.x.max = newHi;
+  chart.update("none");
+  const label = document.getElementById("chart-zoom-label");
+  if (label) label.textContent = e.target.value === "0" ? "full" : `${Math.round(frac * 100)}%`;
+});
+
+// Zoom reset
+document.getElementById("chart-zoom-reset").addEventListener("click", () => {
+  if (!chart) return;
+  setChartView(chartXFullMin, chartXFullMax);
 });
 
 // ── CSV delta input ────────────────────────────────────────────────────────
@@ -1677,10 +1836,19 @@ resetBtn.addEventListener("click", () => {
   if (chart) { chart.destroy(); chart = null; }
   isPlaying       = false;
   isScrubbing     = false;
-  trimWindowStart = 0;
-  csvDelta        = 0;
-  trimDragging    = false;
-  ch1Times        = [];
+  trimWindowStart  = 0;
+  csvDelta         = 0;
+  trimDragging     = false;
+  panDragging      = false;
+  chartXFullMin    = 0;
+  chartXFullMax    = 0;
+  chartXMin        = 0;
+  chartXMax        = 0;
+  const zoomSlider = document.getElementById("chart-zoom-slider");
+  const zoomLabel  = document.getElementById("chart-zoom-label");
+  if (zoomSlider) zoomSlider.value = 0;
+  if (zoomLabel)  zoomLabel.textContent = "full";
+  ch1Times         = [];
   ch1Volts        = [];
   waveformBg      = null;
   allBuzzRel      = [0];

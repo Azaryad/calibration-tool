@@ -1,0 +1,1711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Swimmer Elastic Band — Synchronized Viewer</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0e1117;
+  color: #dde3ee;
+  min-height: 100vh;
+  padding: 20px 24px 40px;
+  overflow-x: hidden;
+}
+
+h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #7eb8f7;
+  margin-bottom: 22px;
+  letter-spacing: 0.01em;
+}
+h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #99b8d8;
+  margin-bottom: 12px;
+}
+
+/* ── Upload section ─────────────────────────────── */
+#upload-section { max-width: 680px; margin: 0 auto; }
+
+.card {
+  background: #161b27;
+  border: 1px solid #1e2d45;
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.file-row label {
+  min-width: 100px;
+  font-size: 0.85rem;
+  color: #8899aa;
+}
+input[type="file"] {
+  flex: 1;
+  background: #0e1624;
+  border: 1px solid #1e3a5f;
+  border-radius: 5px;
+  color: #cdd8e8;
+  font-size: 0.82rem;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+input[type="file"]::file-selector-button {
+  background: #1e3a5f;
+  border: none;
+  color: #7eb8f7;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-right: 8px;
+  font-size: 0.8rem;
+}
+
+.file-list { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #0e1624;
+  border: 1px solid #1a2a40;
+  border-radius: 5px;
+  font-size: 0.82rem;
+}
+.file-item .fname {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #bccfdf;
+}
+.file-item select {
+  background: #1a2a40;
+  color: #dde3ee;
+  border: 1px solid #2a4060;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+#process-btn {
+  width: 100%;
+  padding: 12px;
+  background: #2463ae;
+  border: none;
+  border-radius: 7px;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s;
+  letter-spacing: 0.01em;
+}
+#process-btn:hover:not(:disabled) { background: #1a4d8e; }
+#process-btn:disabled { background: #2a3040; color: #556070; cursor: not-allowed; }
+
+#status-msg {
+  display: none;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 7px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+#status-msg.info { background: #0a1e38; border: 1px solid #2463ae; color: #7eb8f7; }
+#status-msg.error { background: #280d0d; border: 1px solid #8b2020; color: #ff9090; }
+
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid #7eb8f7;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  vertical-align: middle;
+  margin-right: 7px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Viewer section ─────────────────────────────── */
+#viewer-section { display: none; }
+
+.viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+#reset-btn {
+  padding: 6px 14px;
+  background: #1e2d45;
+  border: 1px solid #2e4060;
+  border-radius: 5px;
+  color: #99b8d8;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+#reset-btn:hover { background: #263850; }
+
+#cal-back-btn, #cal-continue-btn, #finish-btn {
+  padding: 7px 14px;
+  border: 1px solid #2e4060;
+  border-radius: 5px;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+#cal-back-btn { background: #1e2d45; color: #99b8d8; }
+#cal-back-btn:hover { background: #263850; }
+#cal-continue-btn { background: #2463ae; color: #fff; border-color: #2463ae; font-weight: 600; }
+#cal-continue-btn:hover:not(:disabled) { background: #1a4d8e; }
+#cal-continue-btn:disabled { background: #2a3040; color: #556070; border-color: #2a3040; cursor: not-allowed; }
+#finish-btn { background: #1f7a3e; color: #fff; border-color: #1f7a3e; font-weight: 600; }
+#finish-btn:hover:not(:disabled) { background: #166030; }
+#finish-btn:disabled { background: #2a3040; color: #556070; border-color: #2a3040; cursor: not-allowed; }
+
+#calibrate-section { display: none; }
+
+.cal-video-card {
+  background: #161b27;
+  border: 1px solid #1e2d45;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.cal-video-card h3 {
+  font-size: 0.95rem;
+  color: #aaccee;
+  margin-bottom: 10px;
+  font-weight: 600;
+  word-break: break-all;
+}
+.cal-video-card video {
+  width: 100%;
+  max-height: 360px;
+  background: #000;
+  border-radius: 6px;
+  display: block;
+}
+.cal-row {
+  margin-top: 12px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.84rem;
+}
+.cal-row .cur-time {
+  color: #7eb8f7;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 90px;
+}
+.cal-set-btn {
+  background: #2463ae;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 11px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.cal-set-btn:hover { background: #1a4d8e; }
+.cal-input {
+  background: #0e1624;
+  border: 1px solid #1e3a5f;
+  border-radius: 4px;
+  color: #dde3ee;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  width: 90px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-input:invalid { border-color: #8b2020; }
+.cal-status {
+  font-size: 0.76rem;
+  color: #667788;
+  padding: 4px 0;
+}
+.cal-status.ok { color: #4cdf80; }
+.cal-status.warn { color: #f0c040; }
+
+.cal-wf-canvas {
+  width: 100%;
+  height: 100px;
+  display: block;
+  cursor: crosshair;
+  border-radius: 4px;
+  margin-top: 10px;
+  background: #07101e;
+  box-sizing: border-box;
+}
+.cal-wf-zoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 0.80rem;
+  color: #7a99b8;
+}
+.cal-wf-zoom input[type=range] {
+  flex: 1;
+  accent-color: #4a8aba;
+  height: 4px;
+  cursor: pointer;
+}
+.cal-zoom-dur {
+  min-width: 66px;
+  text-align: right;
+  color: #7eb8f7;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.80rem;
+}
+
+
+.warnings-box {
+  background: #1e1600;
+  border: 1px solid #6a5000;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+.warn-item {
+  font-size: 0.82rem;
+  color: #e8c040;
+  padding: 3px 0;
+  line-height: 1.45;
+}
+.warn-item::before { content: "⚠ "; }
+
+#videos-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.video-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.video-label {
+  font-size: 0.73rem;
+  color: #778899;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.video-wrapper video {
+  background: #000;
+  border-radius: 7px;
+  border: 1px solid #1a2a40;
+  display: block;
+  max-height: 310px;
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: #161b27;
+  border: 1px solid #1e2d45;
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+}
+.controls-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#waveform-canvas {
+  flex: 1;
+  height: 44px;
+  display: block;
+  border-radius: 3px;
+  background: #080d14;
+}
+#play-pause-btn {
+  padding: 7px 18px;
+  background: #2463ae;
+  border: none;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  min-width: 90px;
+}
+#play-pause-btn:hover { background: #1a4d8e; }
+#scrub-slider {
+  flex: 1;
+  accent-color: #2463ae;
+  cursor: pointer;
+  height: 4px;
+}
+#time-display {
+  min-width: 72px;
+  text-align: right;
+  font-size: 0.82rem;
+  color: #7899aa;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+/* Chart */
+.chart-card {
+  position: relative;
+  background: #161b27;
+  border: 1px solid #1e2d45;
+  border-radius: 10px;
+  padding: 16px 18px 12px;
+}
+.chart-title {
+  font-size: 0.8rem;
+  color: #6688aa;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+#force-chart { width: 100% !important; }
+
+#dot-tooltip {
+  position: absolute;
+  display: none;
+  background: rgba(10, 16, 28, 0.92);
+  border: 1px solid #2463ae;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  color: #dde3ee;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 20;
+  line-height: 1.7;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+#dot-tooltip .tval { color: #ff7070; font-weight: 600; }
+#dot-tooltip .vval { color: #7eb8f7; }
+
+#viewer-back-btn {
+  padding: 7px 14px;
+  border: 1px solid #2e4060;
+  border-radius: 5px;
+  font-size: 0.84rem;
+  cursor: pointer;
+  background: #1e2d45;
+  color: #99b8d8;
+  transition: background 0.15s;
+}
+#viewer-back-btn:hover { background: #263850; }
+
+.delta-warning {
+  display: none;
+  background: #280d0d;
+  border: 1px solid #8b2020;
+  border-radius: 6px;
+  padding: 8px 14px;
+  margin-bottom: 10px;
+  font-size: 0.82rem;
+  color: #ff9090;
+  line-height: 1.5;
+}
+
+#force-chart { cursor: grab; user-select: none; }
+#force-chart.dragging { cursor: grabbing; }
+</style>
+</head>
+<body>
+
+<h1>Swimmer Elastic Band — Synchronized Viewer</h1>
+
+<!-- ══════════ Upload Section ══════════ -->
+<div id="upload-section">
+
+  <div class="card">
+    <h2>1 · Video Files</h2>
+    <div class="file-row">
+      <label>Videos</label>
+      <input type="file" id="video-input" multiple accept=".mp4,.mov,.avi,.mkv,video/*">
+    </div>
+    <div class="file-list" id="video-list"></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Phidget Bridge CSV Files</h2>
+    <p style="font-size:0.8rem;color:#667788;margin-bottom:10px;">
+      Select both CH1 (buzzer) and CH3 (force) CSV files, then assign each using the dropdown.
+    </p>
+    <div class="file-row">
+      <label>CSV Files</label>
+      <input type="file" id="csv-input" multiple accept=".csv,text/csv">
+    </div>
+    <div class="file-list" id="csv-list"></div>
+  </div>
+
+  <div class="card" id="override-card" style="display:none;">
+    <h2>3 · Manual Buzzer Times <span style="font-weight:400;color:#557799;font-size:0.8rem;">(optional — leave blank for auto-detection)</span></h2>
+    <p style="font-size:0.8rem;color:#667788;margin-bottom:12px;">
+      If auto-detection fails, enter the buzzer times as seconds from the start of the CH1 recording.
+    </p>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:0.78rem;color:#8899aa;">Buzzer 1 — seconds from recording start</label>
+        <input type="number" id="buzz1-override" min="0" step="0.1" placeholder="e.g. 108.0"
+          style="background:#0e1624;border:1px solid #1e3a5f;border-radius:5px;color:#dde3ee;padding:6px 10px;font-size:0.88rem;width:220px;">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:0.78rem;color:#8899aa;">Buzzer 2 — seconds from recording start</label>
+        <input type="number" id="buzz2-override" min="0" step="0.1" placeholder="e.g. 141.6"
+          style="background:#0e1624;border:1px solid #1e3a5f;border-radius:5px;color:#dde3ee;padding:6px 10px;font-size:0.88rem;width:220px;">
+      </div>
+    </div>
+  </div>
+
+  <button id="process-btn" disabled>Process Files</button>
+  <div id="status-msg"></div>
+
+</div>
+
+<!-- ══════════ Calibrate Section ══════════ -->
+<div id="calibrate-section">
+  <div class="viewer-header">
+    <h2>Calibrate Videos</h2>
+    <div style="display:flex;gap:8px;">
+      <button id="cal-back-btn">← Back</button>
+      <button id="cal-continue-btn" disabled>Continue to Viewer →</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <p style="font-size:0.88rem;line-height:1.55;color:#bccfdf;">
+      <strong style="color:#7eb8f7;">Manual video calibration.</strong>
+      For each video, play and scrub to find the buzzer events (you'll hear them).
+      Click <em style="color:#7eb8f7;">Set B1</em> and <em style="color:#7eb8f7;">Set B2</em> at each pulse, or type the times directly.
+      Auto-detected values are pre-filled.
+    </p>
+    <p id="cal-csv-info" style="font-size:0.84rem;color:#88aacc;margin-top:10px;"></p>
+
+    <!-- Bandpass filter controls -->
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #1e2d45;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:0.80rem;color:#7eb8f7;font-weight:600;white-space:nowrap;">Bandpass Filter:</span>
+      <label style="font-size:0.78rem;color:#8899aa;display:flex;align-items:center;gap:5px;">
+        <input type="checkbox" id="filter-enabled" style="accent-color:#2463ae;cursor:pointer;">
+        Enable
+      </label>
+      <label style="font-size:0.78rem;color:#8899aa;display:flex;align-items:center;gap:4px;">
+        Low&nbsp;
+        <input type="number" id="filter-lowcut" value="1400" min="100" max="7900" step="50"
+          style="width:70px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:3px 6px;font-size:0.80rem;">
+        &nbsp;Hz
+      </label>
+      <span style="color:#445566;font-size:0.80rem;">–</span>
+      <label style="font-size:0.78rem;color:#8899aa;display:flex;align-items:center;gap:4px;">
+        High&nbsp;
+        <input type="number" id="filter-highcut" value="1600" min="200" max="8000" step="50"
+          style="width:70px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:3px 6px;font-size:0.80rem;">
+        &nbsp;Hz
+      </label>
+      <span id="filter-status" style="font-size:0.76rem;color:#445566;">Off — waveform shows full spectrum</span>
+    </div>
+  </div>
+
+  <div id="cal-delta-warning" class="delta-warning"></div>
+  <div id="cal-videos-list"></div>
+</div>
+
+<!-- ══════════ Viewer Section ══════════ -->
+<div id="viewer-section">
+
+  <div class="viewer-header">
+    <h2>Synchronized Viewer</h2>
+    <div style="display:flex;gap:8px;">
+      <button id="viewer-back-btn">← Back to Calibrate</button>
+      <button id="finish-btn">✔ Finish &amp; Export Trimmed Files</button>
+      <button id="reset-btn">← New Upload</button>
+    </div>
+  </div>
+
+  <div id="warnings-container"></div>
+
+  <div id="videos-container"></div>
+
+  <div class="controls">
+    <div class="controls-row" id="waveform-row">
+      <div style="min-width:90px;max-width:90px;"></div>
+      <canvas id="waveform-canvas"></canvas>
+      <div style="min-width:72px;max-width:72px;"></div>
+    </div>
+    <div class="controls-row">
+      <button id="play-pause-btn">▶ Play</button>
+      <input type="range" id="scrub-slider" min="0" max="60" step="0.01" value="0">
+      <span id="time-display">0.00 s</span>
+    </div>
+  </div>
+
+  <div class="chart-card" id="chart-card">
+    <div class="chart-title">Force — CH3 (Voltage)</div>
+    <canvas id="force-chart" height="180"></canvas>
+    <div id="dot-tooltip">
+      <span class="tval" id="tt-time">t = 0.00 s</span><br>
+      <span class="vval" id="tt-volt">V = 0.0000 V</span>
+    </div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid #1e2d45;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:0.80rem;color:#7a99b8;">CSV trim delta:</span>
+      <input type="number" id="csv-delta-input" step="0.01" min="0.1"
+        style="width:90px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:4px 8px;font-size:0.82rem;font-variant-numeric:tabular-nums;">
+      <span style="font-size:0.80rem;color:#8899aa;">s &nbsp;— drag the window on the chart to set B1/B2</span>
+      <span id="trim-window-info" style="font-size:0.78rem;color:#557799;margin-left:auto;font-variant-numeric:tabular-nums;"></span>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+"use strict";
+
+// ── State ──────────────────────────────────────────────────────────────────
+let sessionId   = null;
+let appData     = null;
+let ch3Times    = [];
+let ch3Volts    = [];
+let videoData   = [];   // [{filename, offset, buzz1_vid, buzz2_vid}, ...]
+let allVideos   = [];   // HTMLVideoElement[]
+let chart       = null;
+let isPlaying   = false;
+let isScrubbing = false;
+let ch1Times    = [];
+let ch1Volts    = [];
+let waveformBg  = null; // pre-drawn waveform background canvas
+let allBuzzRel  = [];   // all detected CSV buzzer times relative to original B1
+let calVideoAnchors = []; // "b1" or "b2" per video from calibration page
+let trimWindowStart = 0;  // left edge of draggable trim window (in allBuzzRel space)
+let csvDelta        = 0;  // CSV trim window width (seconds)
+let trimDragging    = false;
+let trimDragStartX  = 0;
+let trimDragStartWindow = 0;
+
+let videoFiles  = [];   // File[]
+let csvFiles    = [];   // File[]
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const videoInput   = document.getElementById("video-input");
+const csvInput     = document.getElementById("csv-input");
+const videoListEl  = document.getElementById("video-list");
+const csvListEl    = document.getElementById("csv-list");
+const processBtn   = document.getElementById("process-btn");
+const statusMsg    = document.getElementById("status-msg");
+const slider       = document.getElementById("scrub-slider");
+const timeDisplay  = document.getElementById("time-display");
+const playPauseBtn = document.getElementById("play-pause-btn");
+const resetBtn     = document.getElementById("reset-btn");
+
+// ── File selection ─────────────────────────────────────────────────────────
+videoInput.addEventListener("change", () => {
+  videoFiles = Array.from(videoInput.files);
+  renderVideoList();
+  checkReady();
+});
+
+csvInput.addEventListener("change", () => {
+  csvFiles = Array.from(csvInput.files);
+  renderCsvList();
+  checkReady();
+});
+
+function renderVideoList() {
+  videoListEl.innerHTML = "";
+  videoFiles.forEach(f => {
+    const div = document.createElement("div");
+    div.className = "file-item";
+    div.innerHTML = `<span class="fname">🎬 ${esc(f.name)}</span>`;
+    videoListEl.appendChild(div);
+  });
+}
+
+function renderCsvList() {
+  csvListEl.innerHTML = "";
+  csvFiles.forEach(f => {
+    const lo = f.name.toLowerCase();
+    let def = "ch1";
+    if (lo.includes("ch3") || lo.includes("channel3") || lo.includes("force") || lo.includes("strain")) def = "ch3";
+
+    const div = document.createElement("div");
+    div.className = "file-item";
+    div.dataset.fname = f.name;
+    div.innerHTML = `
+      <span class="fname">📊 ${esc(f.name)}</span>
+      <select class="ch-sel">
+        <option value="ch1" ${def === "ch1" ? "selected" : ""}>CH1 — Buzzer</option>
+        <option value="ch3" ${def === "ch3" ? "selected" : ""}>CH3 — Force</option>
+      </select>`;
+    csvListEl.appendChild(div);
+  });
+}
+
+function getCsvAssignments() {
+  const out = {};
+  csvListEl.querySelectorAll(".file-item").forEach(el => {
+    out[el.dataset.fname] = el.querySelector(".ch-sel").value;
+  });
+  return out;
+}
+
+function checkReady() {
+  processBtn.disabled = !(videoFiles.length >= 1 && csvFiles.length >= 2);
+  document.getElementById("override-card").style.display = csvFiles.length >= 1 ? "block" : "none";
+}
+
+// ── Process ────────────────────────────────────────────────────────────────
+processBtn.addEventListener("click", async () => {
+  const assignments = getCsvAssignments();
+  const ch1File = Object.keys(assignments).find(k => assignments[k] === "ch1");
+  const ch3File = Object.keys(assignments).find(k => assignments[k] === "ch3");
+
+  if (!ch1File) { showStatus("Assign one CSV file as CH1 (Buzzer).", "error"); return; }
+  if (!ch3File) { showStatus("Assign one CSV file as CH3 (Force).", "error"); return; }
+
+  processBtn.disabled = true;
+  showStatus('<span class="spinner"></span>Uploading files…', "info");
+
+  try {
+    // 1. Upload
+    const fd = new FormData();
+    videoFiles.forEach(f => fd.append("videos", f));
+    csvFiles.forEach(f => fd.append("csvs", f));
+
+    const upRes = await fetch("/upload", { method: "POST", body: fd });
+    if (!upRes.ok) throw new Error(`Upload failed (${upRes.status})`);
+    const upData = await upRes.json();
+    sessionId = upData.session_id;
+
+    showStatus('<span class="spinner"></span>Detecting buzzer events and calibrating…', "info");
+
+    // 2. Process
+    const b1 = document.getElementById("buzz1-override").value.trim();
+    const b2 = document.getElementById("buzz2-override").value.trim();
+    const processBody = {
+      session_id: sessionId,
+      ch1_file: ch1File,
+      ch3_file: ch3File,
+      video_files: videoFiles.map(f => f.name),
+    };
+    if (b1 !== "") processBody.buzz1_override_s = parseFloat(b1);
+    if (b2 !== "") processBody.buzz2_override_s = parseFloat(b2);
+    const filterEnabled = document.getElementById("filter-enabled").checked;
+    const filterLo = parseFloat(document.getElementById("filter-lowcut").value) || 0;
+    const filterHi = parseFloat(document.getElementById("filter-highcut").value) || 0;
+    if (filterEnabled && filterLo > 0 && filterHi > filterLo) {
+      processBody.audio_lowcut  = filterLo;
+      processBody.audio_highcut = filterHi;
+    }
+
+    const prRes = await fetch("/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(processBody),
+    });
+    const result = await prRes.json();
+
+    if (result.error) {
+      showStatus(result.error, "error");
+      processBtn.disabled = false;
+      return;
+    }
+
+    hideStatus();
+    initCalibration(result);
+
+  } catch (err) {
+    showStatus("Error: " + err.message, "error");
+    processBtn.disabled = false;
+  }
+});
+
+function showStatus(html, type) {
+  statusMsg.innerHTML = html;
+  statusMsg.className = type;
+  statusMsg.style.display = "block";
+}
+function hideStatus() { statusMsg.style.display = "none"; }
+function esc(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ── Calibration stage ──────────────────────────────────────────────────────
+let pendingResult = null;
+let calVideos = [];
+const _calFetchTimers = {};
+
+function calViewDur(cv) {
+  const maxDur = cv.wfTotalDur || 300;
+  const v = parseInt(cv.zoomSlider.value);
+  if (v === 0) return maxDur;
+  return maxDur * Math.pow((1 / 60) / maxDur, v / 1000);
+}
+
+function calFormatDur(s) {
+  return s >= 1 ? s.toFixed(2) + ' s' : (s * 1000).toFixed(1) + ' ms';
+}
+
+function calUpdateZoomLabel(cv) {
+  cv.zoomDurEl.textContent = cv.wfTotalDur ? calFormatDur(calViewDur(cv)) : 'full';
+}
+
+function calCenterView(cv, videoTime) {
+  const vd = calViewDur(cv);
+  const max = cv.wfTotalDur || 300;
+  cv.wfViewStart = Math.max(0, Math.min(videoTime - vd / 2, max - vd));
+}
+
+function getFilterParams() {
+  const enabled = document.getElementById("filter-enabled").checked;
+  if (!enabled) return "";
+  const lo = parseFloat(document.getElementById("filter-lowcut").value)  || 0;
+  const hi = parseFloat(document.getElementById("filter-highcut").value) || 0;
+  if (lo <= 0 || hi <= lo) return "";
+  return `&lowcut=${lo}&highcut=${hi}`;
+}
+
+function onFilterChange() {
+  const enabled = document.getElementById("filter-enabled").checked;
+  const lo = parseFloat(document.getElementById("filter-lowcut").value)  || 0;
+  const hi = parseFloat(document.getElementById("filter-highcut").value) || 0;
+  const statusEl = document.getElementById("filter-status");
+  if (!enabled) {
+    statusEl.style.color = "#445566";
+    statusEl.textContent = "Off — waveform shows full spectrum";
+  } else if (lo <= 0 || hi <= lo) {
+    statusEl.style.color = "#f0c040";
+    statusEl.textContent = "Invalid range — high must be greater than low";
+  } else {
+    statusEl.style.color = "#4cdf80";
+    statusEl.textContent = `Active: ${lo}–${hi} Hz (buzzer band isolated)`;
+  }
+  calVideos.forEach(cv => scheduleCalFetch(cv, 80));
+}
+
+["filter-enabled", "filter-lowcut", "filter-highcut"].forEach(id => {
+  document.getElementById(id).addEventListener("change", onFilterChange);
+  document.getElementById(id).addEventListener("input",  onFilterChange);
+});
+
+function scheduleCalFetch(cv, delay) {
+  clearTimeout(_calFetchTimers[cv.filename]);
+  _calFetchTimers[cv.filename] = setTimeout(() => fetchCalWaveform(cv), delay ?? 80);
+}
+
+async function fetchCalWaveform(cv) {
+  const vd      = calViewDur(cv);
+  const margin  = vd;
+  const t_start = Math.max(0, cv.wfViewStart - margin);
+  const t_end   = cv.wfViewStart + vd + margin;
+  const n_bins  = 1200;
+  try {
+    const res  = await fetch(`/cal_waveform/${sessionId}/${encodeURIComponent(cv.filename)}?t_start=${t_start.toFixed(4)}&t_end=${t_end.toFixed(4)}&n_bins=${n_bins}${getFilterParams()}`);
+    const data = await res.json();
+    if (data.error) return;
+    cv.wfBins    = data.bins;
+    cv.wfFetchT0 = data.t0;
+    cv.wfFetchT1 = data.t1;
+    if (cv.wfTotalDur === null) {
+      cv.wfTotalDur = data.total_dur;
+      calUpdateZoomLabel(cv);
+    }
+    drawCalWaveform(cv);
+  } catch (_) {}
+}
+
+function drawCalWaveform(cv) {
+  const canvas = cv.wfCanvas;
+  if (!canvas) return;
+  const W   = canvas.width;
+  const H   = canvas.height;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#07101e';
+  ctx.fillRect(0, 0, W, H);
+
+  const vd         = calViewDur(cv);
+  const viewStart  = cv.wfViewStart;
+
+  if (cv.wfBins && cv.wfBins.length) {
+    const bins   = cv.wfBins;
+    const bt0    = cv.wfFetchT0;
+    const bt1    = cv.wfFetchT1;
+    const N      = bins.length;
+    const binDur = (bt1 - bt0) / N;
+    ctx.fillStyle = '#2d6fa8';
+    for (let px = 0; px < W; px++) {
+      const t      = viewStart + (px / W) * vd;
+      const bidx   = Math.floor((t - bt0) / binDur);
+      if (bidx >= 0 && bidx < N) {
+        const barH = Math.max(1, bins[bidx] * (H - 4));
+        ctx.fillRect(px, H - barH - 2, 1, barH);
+      }
+    }
+  }
+
+  // Buzzer marker lines
+  ctx.font = 'bold 10px monospace';
+  const b1 = parseFloat(cv.inp1.value);
+  const b2 = parseFloat(cv.inp2.value);
+  if (isFinite(b1)) {
+    const x = Math.round((b1 - viewStart) / vd * W);
+    ctx.strokeStyle = '#ff5555'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    if (x >= 0 && x <= W) { ctx.fillStyle = '#ff5555'; ctx.fillText('B1', Math.min(x + 3, W - 18), 13); }
+  }
+  if (isFinite(b2)) {
+    const x = Math.round((b2 - viewStart) / vd * W);
+    ctx.strokeStyle = '#33ee77'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    if (x >= 0 && x <= W) { ctx.fillStyle = '#33ee77'; ctx.fillText('B2', Math.min(x + 3, W - 18), 13); }
+  }
+
+  // Delta line (orange dashed) — shows where the other buzzer should land based on CSV delta
+  const refDelta = pendingResult ? pendingResult.experiment_duration : 0;
+  if (refDelta > 0) {
+    let anchorVal = "b1";
+    if (cv.anchorRadios) {
+      for (const r of cv.anchorRadios) { if (r.checked) { anchorVal = r.value; break; } }
+    }
+    const anchorT = anchorVal === "b1" ? (isFinite(b1) ? b1 : null) : (isFinite(b2) ? b2 : null);
+    if (anchorT !== null) {
+      const deltaLineT = anchorVal === "b1" ? anchorT + refDelta : anchorT - refDelta;
+      const dx = Math.round((deltaLineT - viewStart) / vd * W);
+      if (dx >= -2 && dx <= W + 2) {
+        ctx.strokeStyle = '#f0a030'; ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(dx, 0); ctx.lineTo(dx, H); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#f0a030'; ctx.font = 'bold 10px monospace';
+        ctx.fillText('Δ', Math.min(Math.max(dx + 3, 2), W - 14), H - 15);
+      }
+      if (cv.deltaInfoEl) {
+        cv.deltaInfoEl.textContent = `Δ line @ ${deltaLineT.toFixed(2)} s (${anchorVal.toUpperCase()}${anchorVal === "b1" ? " +" : " −"}${refDelta.toFixed(2)} s)`;
+      }
+    }
+  }
+
+  // White cursor at current video position
+  const ct = cv.video.currentTime;
+  const cx = Math.round((ct - viewStart) / vd * W);
+  if (cx >= 0 && cx <= W) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Time labels at bottom corners
+  ctx.fillStyle = '#445566'; ctx.font = '9px monospace';
+  const startLbl = viewStart.toFixed(3) + 's';
+  const endLbl   = (viewStart + vd).toFixed(3) + 's';
+  ctx.fillText(startLbl, 3, H - 3);
+  ctx.fillText(endLbl, W - ctx.measureText(endLbl).width - 3, H - 3);
+}
+
+function initCalibration(data) {
+  pendingResult = data;
+  sessionId = data.session_id;
+
+  // Show CSV info (CSV times are epoch-seconds; render duration only)
+  document.getElementById("cal-csv-info").innerHTML =
+    `CH1 buzzers detected — experiment duration: <strong>${data.experiment_duration.toFixed(2)} s</strong>` +
+    (data.warnings && data.warnings.length
+      ? `  ·  <span style="color:#f0c040;">${data.warnings.length} warning(s) — see viewer</span>` : "");
+
+  const list = document.getElementById("cal-videos-list");
+  list.innerHTML = "";
+  calVideos = [];
+
+  data.videos.forEach((vd, idx) => {
+    const card = document.createElement("div");
+    card.className = "cal-video-card";
+    card.innerHTML = `
+      <h3>🎬 ${esc(vd.filename)}</h3>
+      <video src="/video/${sessionId}/${encodeURIComponent(vd.filename)}" controls preload="auto" playsinline></video>
+      <div class="cal-row">
+        <span>Current: <span class="cur-time">0.00 s</span></span>
+        <button class="cal-set-btn" data-which="1">Set Buzzer 1</button>
+        <label>Buzzer 1: <input type="number" step="0.01" min="0" class="cal-input inp-b1" value="${(vd.buzz1_vid ?? 0).toFixed(2)}"> s</label>
+        <button class="cal-set-btn" data-which="2">Set Buzzer 2</button>
+        <label>Buzzer 2: <input type="number" step="0.01" min="0" class="cal-input inp-b2" value="${vd.buzz2_vid != null ? vd.buzz2_vid.toFixed(2) : ''}"> s</label>
+        <span class="cal-status"></span>
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;font-size:0.80rem;color:#8899aa;">
+        <span>Anchor for page 3:</span>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="anchor-${idx}" value="b1" checked style="accent-color:#e84040;cursor:pointer;"> <span style="color:#e84040;">B1</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="radio" name="anchor-${idx}" value="b2" style="accent-color:#4cdf80;cursor:pointer;"> <span style="color:#4cdf80;">B2</span>
+        </label>
+        <span id="delta-line-info-${idx}" style="font-size:0.75rem;color:#f0a030;margin-left:6px;"></span>
+      </div>
+      <canvas class="cal-wf-canvas"></canvas>
+      <div class="cal-wf-zoom">
+        <span>Zoom</span>
+        <input type="range" class="cal-zoom-slider" min="0" max="1000" value="0">
+        <span class="cal-zoom-dur">full</span>
+      </div>
+    `;
+    list.appendChild(card);
+
+    const videoEl   = card.querySelector("video");
+    const curTime   = card.querySelector(".cur-time");
+    const inp1      = card.querySelector(".inp-b1");
+    const inp2      = card.querySelector(".inp-b2");
+    const statusEl  = card.querySelector(".cal-status");
+    const wfCanvas  = card.querySelector(".cal-wf-canvas");
+    const zoomSlider = card.querySelector(".cal-zoom-slider");
+    const zoomDurEl = card.querySelector(".cal-zoom-dur");
+
+    wfCanvas.width  = 800;
+    wfCanvas.height = 100;
+
+    const anchorRadios  = card.querySelectorAll(`input[name="anchor-${idx}"]`);
+    const deltaInfoEl   = card.querySelector(`#delta-line-info-${idx}`);
+
+    const cv = {
+      video: videoEl, inp1, inp2, statusEl, filename: vd.filename,
+      wfCanvas, zoomSlider, zoomDurEl,
+      wfViewStart: 0, wfTotalDur: null,
+      wfBins: null, wfFetchT0: 0, wfFetchT1: 0,
+      anchorRadios, deltaInfoEl,
+    };
+    calVideos.push(cv);
+
+    anchorRadios.forEach(r => r.addEventListener("change", () => drawCalWaveform(cv)));
+
+    videoEl.addEventListener("timeupdate", () => {
+      curTime.textContent = videoEl.currentTime.toFixed(2) + " s";
+      const ct  = videoEl.currentTime;
+      const vd_ = calViewDur(cv);
+      if (ct < cv.wfViewStart || ct > cv.wfViewStart + vd_) {
+        calCenterView(cv, ct);
+        scheduleCalFetch(cv, 60);
+      } else {
+        drawCalWaveform(cv);
+      }
+    });
+
+    card.querySelectorAll(".cal-set-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const t = videoEl.currentTime;
+        if (btn.dataset.which === "1") inp1.value = t.toFixed(2);
+        else inp2.value = t.toFixed(2);
+        validateCal();
+        drawCalWaveform(cv);
+      });
+    });
+    [inp1, inp2].forEach(inp => inp.addEventListener("input", () => {
+      validateCal();
+      drawCalWaveform(cv);
+    }));
+
+    zoomSlider.addEventListener("input", () => {
+      calUpdateZoomLabel(cv);
+      calCenterView(cv, videoEl.currentTime);
+      scheduleCalFetch(cv, 80);
+    });
+
+    wfCanvas.addEventListener("click", e => {
+      const rect = wfCanvas.getBoundingClientRect();
+      const frac = (e.clientX - rect.left) / rect.width;
+      const t = cv.wfViewStart + frac * calViewDur(cv);
+      videoEl.currentTime = Math.max(0, Math.min(t, videoEl.duration || 1e9));
+    });
+
+    // Initial fetch centered on detected buzz1 time
+    cv.wfViewStart = Math.max(0, (vd.buzz1_vid ?? 0) - 5);
+    scheduleCalFetch(cv, 120);
+  });
+
+  validateCal();
+  document.getElementById("upload-section").style.display = "none";
+  document.getElementById("viewer-section").style.display = "none";
+  document.getElementById("calibrate-section").style.display = "block";
+  history.pushState({ page: "calibrate" }, "", "");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function validateCal() {
+  let allOk = true;
+  const expected = pendingResult ? pendingResult.experiment_duration : null;
+  const validDeltas = [];
+
+  for (const c of calVideos) {
+    const b1 = parseFloat(c.inp1.value);
+    const b2 = parseFloat(c.inp2.value);
+    if (!isFinite(b1) || !isFinite(b2) || b2 <= b1) {
+      c.statusEl.textContent = "✗ Buzzer 2 must be after Buzzer 1";
+      c.statusEl.className = "cal-status warn";
+      allOk = false;
+      continue;
+    }
+    const dur = b2 - b1;
+    validDeltas.push({ name: c.filename.split(/[\\/]/).pop(), delta: dur });
+    if (expected !== null && Math.abs(dur - expected) > 1.5) {
+      c.statusEl.textContent = `⚠ Δ = ${dur.toFixed(2)} s (CSV is ${expected.toFixed(2)} s)`;
+      c.statusEl.className = "cal-status warn";
+    } else {
+      c.statusEl.textContent = `✓ Δ = ${dur.toFixed(2)} s`;
+      c.statusEl.className = "cal-status ok";
+    }
+  }
+
+  // Delta consistency warning across videos
+  const warnEl = document.getElementById("cal-delta-warning");
+  if (validDeltas.length >= 2) {
+    const minD = Math.min(...validDeltas.map(d => d.delta));
+    const maxD = Math.max(...validDeltas.map(d => d.delta));
+    if (maxD - minD > 0.5) {
+      const details = validDeltas.map(d => `${d.name}: ${d.delta.toFixed(2)} s`).join("  ·  ");
+      warnEl.style.display = "block";
+      warnEl.innerHTML = `⚠ Video trim deltas differ by ${(maxD - minD).toFixed(2)} s — check calibration:  ${details}`;
+    } else {
+      warnEl.style.display = "none";
+    }
+  } else {
+    warnEl.style.display = "none";
+  }
+
+  document.getElementById("cal-continue-btn").disabled = !allOk;
+}
+
+document.getElementById("cal-continue-btn").addEventListener("click", () => {
+  // Apply calibration to pendingResult and proceed
+  pendingResult.videos = pendingResult.videos.map((vd, i) => {
+    const b1 = parseFloat(calVideos[i].inp1.value);
+    const b2 = parseFloat(calVideos[i].inp2.value);
+    return { ...vd, buzz1_vid: b1, buzz2_vid: b2, offset: pendingResult.t_buzz1_csv - b1 };
+  });
+  // Capture per-video anchor choices
+  calVideoAnchors = calVideos.map(cv => {
+    if (!cv.anchorRadios) return "b1";
+    for (const r of cv.anchorRadios) { if (r.checked) return r.value; }
+    return "b1";
+  });
+  // Pause/clear cal videos to free decoders
+  calVideos.forEach(c => { c.video.pause(); c.video.removeAttribute("src"); c.video.load(); });
+  calVideos = [];
+  document.getElementById("calibrate-section").style.display = "none";
+  initViewer(pendingResult);
+  history.pushState({ page: "viewer" }, "", "");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+document.getElementById("cal-back-btn").addEventListener("click", () => {
+  calVideos.forEach(c => { c.video.pause(); c.video.removeAttribute("src"); c.video.load(); });
+  calVideos = [];
+  document.getElementById("cal-videos-list").innerHTML = "";
+  document.getElementById("calibrate-section").style.display = "none";
+  document.getElementById("upload-section").style.display = "block";
+  processBtn.disabled = false;
+});
+
+// ── Finish & Export ────────────────────────────────────────────────────────
+const finishBtn = document.getElementById("finish-btn");
+
+finishBtn.addEventListener("click", async () => {
+  if (!appData || !sessionId) return;
+
+  // Pre-export: warn if CSV trim delta differs from any video trim delta by >100 ms
+  const mismatch = videoData.filter(vd => {
+    const vidDelta = vd.buzz2_vid - vd.buzz1_vid;
+    return Math.abs(csvDelta - vidDelta) > 0.1;
+  });
+  if (mismatch.length > 0) {
+    const lines = mismatch.map(vd => {
+      const vd2 = vd.buzz2_vid - vd.buzz1_vid;
+      return `• ${vd.filename.split(/[\\/]/).pop()}: video Δ = ${vd2.toFixed(3)} s, CSV Δ = ${csvDelta.toFixed(3)} s (diff = ${Math.abs(csvDelta - vd2).toFixed(3)} s)`;
+    }).join("\n");
+    const ok = confirm(
+      `CSV trim duration (${csvDelta.toFixed(3)} s) differs from video trim duration by more than 100 ms:\n\n${lines}\n\nProceed with export anyway?`
+    );
+    if (!ok) return;
+  }
+
+  const original = finishBtn.innerHTML;
+  finishBtn.disabled = true;
+  finishBtn.innerHTML = '<span class="spinner" style="border-color:#fff;border-top-color:transparent;width:13px;height:13px;"></span> Trimming…';
+
+  try {
+    const res = await fetch("/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        ch1_file: appData.ch1_file,
+        ch3_file: appData.ch3_file,
+        t_buzz1_csv: appData.t_buzz1_csv,
+        t_buzz2_csv: appData.t_buzz2_csv,
+        videos: videoData.map(v => ({
+          filename: v.filename,
+          buzz1_vid: v.buzz1_vid,
+          buzz2_vid: v.buzz2_vid,
+        })),
+      }),
+    });
+
+    if (!res.ok) {
+      let msg = "Export failed";
+      try { const j = await res.json(); msg = j.error || msg; } catch (_) {}
+      throw new Error(msg);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `swimmer_calibrated_${sessionId.slice(0,8)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    finishBtn.innerHTML = "✔ Exported — ZIP downloaded";
+    setTimeout(() => { finishBtn.innerHTML = original; finishBtn.disabled = false; }, 3500);
+  } catch (err) {
+    alert("Export error: " + err.message);
+    finishBtn.innerHTML = original;
+    finishBtn.disabled = false;
+  }
+});
+
+// ── Viewer init ────────────────────────────────────────────────────────────
+function initViewer(data) {
+  appData    = data;
+  ch3Times   = data.ch3.time;
+  ch3Volts   = data.ch3.voltage;
+  videoData  = data.videos;
+  ch1Times   = (data.ch1 && data.ch1.time)    ? data.ch1.time    : [];
+  ch1Volts   = (data.ch1 && data.ch1.voltage) ? data.ch1.voltage : [];
+  waveformBg = null;
+
+  allBuzzRel = (data.all_buzz_rel && data.all_buzz_rel.length >= 2)
+    ? data.all_buzz_rel
+    : [0, data.experiment_duration];
+  appData._origBuzzAbs = data.t_buzz1_csv;
+
+  // Trim window — starts at first detected buzzer (index 0 = 0 s), width = experiment_duration
+  trimWindowStart = allBuzzRel[0];
+  csvDelta = data.experiment_duration;
+  document.getElementById("csv-delta-input").value = csvDelta.toFixed(3);
+  appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
+  appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
+  document.getElementById("trim-window-info").textContent =
+    `B1: ${trimWindowStart.toFixed(2)} s  ·  B2: ${(trimWindowStart + csvDelta).toFixed(2)} s`;
+
+  // Warnings
+  const wc = document.getElementById("warnings-container");
+  if (data.warnings && data.warnings.length) {
+    wc.innerHTML = `<div class="warnings-box">${
+      data.warnings.map(w => `<div class="warn-item">${esc(w)}</div>`).join("")
+    }</div>`;
+  } else {
+    wc.innerHTML = "";
+  }
+
+  // Videos
+  const container = document.getElementById("videos-container");
+  container.innerHTML = "";
+  allVideos = [];
+
+  const nv = videoData.length;
+  const vw = Math.min(520, Math.max(220, Math.floor((window.innerWidth - 60) / nv) - 14));
+
+  videoData.forEach(vd => {
+    const wrap  = document.createElement("div");
+    wrap.className = "video-wrapper";
+
+    const lbl = document.createElement("div");
+    lbl.className = "video-label";
+    lbl.style.maxWidth = vw + "px";
+    lbl.textContent = vd.filename;
+
+    const vid = document.createElement("video");
+    vid.src = `/video/${sessionId}/${encodeURIComponent(vd.filename)}`;
+    vid.style.width = vw + "px";
+    vid.preload = "auto";
+    vid.playsInline = true;
+
+    wrap.append(lbl, vid);
+    container.appendChild(wrap);
+    allVideos.push(vid);
+  });
+
+  slider.min   = 0;
+  slider.max   = appData.experiment_duration;
+  slider.step  = 0.01;
+  slider.value = 0;
+
+  // Chart
+  if (chart) { chart.destroy(); chart = null; }
+  buildChart();
+
+  // Events
+  allVideos[0].addEventListener("timeupdate", onTimeUpdate);
+  allVideos.forEach(v => {
+    v.addEventListener("ended", () => {
+      isPlaying = false;
+      playPauseBtn.textContent = "▶ Play";
+    });
+  });
+
+  // Show viewer
+  document.getElementById("upload-section").style.display = "none";
+  document.getElementById("viewer-section").style.display = "block";
+
+  // Seek to experiment start, then build waveform once layout is painted
+  seekAll(0);
+  requestAnimationFrame(() => {
+    if (videoData.length && videoData[0].waveform) {
+      buildWaveformBg(videoData[0]);
+      updateWaveformCursor(0);
+    }
+  });
+}
+
+// ── Trim-window plugin ─────────────────────────────────────────────────────
+const trimWindowPlugin = {
+  id: "trimWindow",
+  beforeDraw(ch) {
+    if (!appData) return;
+    const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = ch;
+    const x1 = Math.max(left,  Math.min(right, x.getPixelForValue(trimWindowStart)));
+    const x2 = Math.max(left,  Math.min(right, x.getPixelForValue(trimWindowStart + csvDelta)));
+    ctx.save();
+    ctx.fillStyle = "rgba(36,99,174,0.13)";
+    ctx.fillRect(x1, top, x2 - x1, bottom - top);
+    ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.strokeStyle = "#e84040";
+    ctx.beginPath(); ctx.moveTo(x1, top); ctx.lineTo(x1, bottom); ctx.stroke();
+    ctx.strokeStyle = "#4cdf80";
+    ctx.beginPath(); ctx.moveTo(x2, top); ctx.lineTo(x2, bottom); ctx.stroke();
+    ctx.font = "bold 11px monospace";
+    ctx.fillStyle = "#e84040";
+    ctx.fillText("B1", Math.min(x1 + 4, right - 22), top + 14);
+    ctx.fillStyle = "#4cdf80";
+    ctx.fillText("B2", Math.max(x2 - 22, left + 2), top + 14);
+    ctx.restore();
+  },
+};
+
+// ── Chart ──────────────────────────────────────────────────────────────────
+function buildChart() {
+  const ctx  = document.getElementById("force-chart").getContext("2d");
+  // ch3Times / ch1Times are already re-zeroed relative to B1 (server does t - t_buzz1_csv)
+  const initV = interp(0);
+
+  const xMin = (allBuzzRel.length ? allBuzzRel[0] : 0) - 5;
+  const xMax = (allBuzzRel.length ? allBuzzRel[allBuzzRel.length - 1] : appData.experiment_duration) + 5;
+
+  chart = new Chart(ctx, {
+    plugins: [trimWindowPlugin],
+    data: {
+      datasets: [
+        {
+          type: "line",
+          label: "CH3 Force",
+          data: ch3Times.map((t, i) => ({ x: t, y: ch3Volts[i] })),
+          borderColor: "#2E75B6",
+          backgroundColor: "transparent",
+          pointRadius: 0,
+          borderWidth: 1.5,
+          tension: 0,
+          order: 2,
+          parsing: false,
+        },
+        {
+          type: "scatter",
+          label: "Position",
+          data: [{ x: 0, y: initV }],
+          pointRadius: 9,
+          pointHoverRadius: 9,
+          pointBackgroundColor: "#e84040",
+          pointBorderColor: "#ffffff",
+          pointBorderWidth: 2,
+          order: 1,
+          parsing: false,
+        },
+        {
+          type: "line",
+          label: "CH1 Buzzer",
+          data: ch1Times.map((t, i) => ({ x: t, y: Math.max(0, ch1Volts[i]) })),
+          borderColor: "rgba(240,200,60,0.7)",
+          backgroundColor: "transparent",
+          pointRadius: 0,
+          borderWidth: 1,
+          tension: 0,
+          order: 4,
+          parsing: false,
+          yAxisID: "y2",
+        },
+      ],
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false },
+      },
+      scales: {
+        x: {
+          type: "linear",
+          min: xMin,
+          max: xMax,
+          title: { display: true, text: "Time from B1 (s)", color: "#5577aa", font: { size: 11 } },
+          grid: { color: "#1a2535" },
+          ticks: { color: "#667788", font: { size: 10 } },
+        },
+        y: {
+          type: "linear",
+          title: { display: true, text: "CH3 Force (V)", color: "#5577aa", font: { size: 11 } },
+          grid: { color: "#1a2535" },
+          ticks: { color: "#667788", font: { size: 10 } },
+        },
+        y2: {
+          type: "linear",
+          position: "right",
+          min: 0,
+          title: { display: true, text: "CH1 Buzzer (V)", color: "#b09030", font: { size: 11 } },
+          grid: { drawOnChartArea: false },
+          ticks: { color: "#a08020", font: { size: 10 } },
+        },
+      },
+    },
+  });
+}
+
+// ── Audio waveform bar ─────────────────────────────────────────────────────
+function buildWaveformBg(vd) {
+  const canvas = document.getElementById("waveform-canvas");
+  if (!canvas || !vd || !vd.waveform || !vd.waveform.length) return;
+
+  const W = canvas.offsetWidth;
+  if (!W) return;
+  const H = 44;
+  canvas.width  = W;
+  canvas.height = H;
+
+  waveformBg = document.createElement("canvas");
+  waveformBg.width  = W;
+  waveformBg.height = H;
+  const ctx = waveformBg.getContext("2d");
+
+  ctx.fillStyle = "#080d14";
+  ctx.fillRect(0, 0, W, H);
+
+  const wf = vd.waveform;
+  const t0 = vd.waveform_t0;
+  const t1 = vd.waveform_t1;
+  const n  = wf.length;
+
+  for (let i = 0; i < n; i++) {
+    const vidT    = t0 + (t1 - t0) * i / n;
+    const masterT = videoToMaster(vidT, vd);
+    const xFrac   = masterT / (appData.experiment_duration);
+    if (xFrac < -0.05 || xFrac > 1.05) continue;
+    const x = Math.round(xFrac * W);
+    const h = Math.max(1, Math.round(wf[i] * H));
+    ctx.fillStyle = wf[i] > 0.35
+      ? `rgba(240,200,60,${0.45 + wf[i] * 0.55})`
+      : `rgba(45,85,150,${0.25 + wf[i] * 0.6})`;
+    ctx.fillRect(x, H - h, 1, h);
+  }
+
+  // Buzzer markers
+  ctx.fillStyle = "rgba(232,64,64,0.7)";
+  ctx.fillRect(0, 0, 1, H);
+  ctx.fillStyle = "rgba(76,223,128,0.7)";
+  ctx.fillRect(W - 1, 0, 1, H);
+}
+
+function updateWaveformCursor(masterTime) {
+  const canvas = document.getElementById("waveform-canvas");
+  if (!canvas || !waveformBg || !appData) return;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(waveformBg, 0, 0);
+  const x = Math.round(masterTime / (appData.experiment_duration) * canvas.width);
+  ctx.fillStyle = "rgba(232,64,64,0.9)";
+  ctx.fillRect(Math.max(0, x - 1), 0, 2, canvas.height);
+}
+
+// ── Trim window drag ───────────────────────────────────────────────────────
+function updateTrimInfo() {
+  document.getElementById("trim-window-info").textContent =
+    `B1: ${trimWindowStart.toFixed(2)} s  ·  B2: ${(trimWindowStart + csvDelta).toFixed(2)} s`;
+}
+
+const forceChartEl = document.getElementById("force-chart");
+
+forceChartEl.addEventListener("mousedown", e => {
+  if (!chart || !appData) return;
+  const rect = forceChartEl.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const ca = chart.chartArea;
+  if (mx < ca.left || mx > ca.right) return;
+  trimDragging    = true;
+  trimDragStartX  = e.clientX;
+  trimDragStartWindow = trimWindowStart;
+  forceChartEl.classList.add("dragging");
+  e.preventDefault();
+});
+
+document.addEventListener("mousemove", e => {
+  if (!trimDragging || !chart) return;
+  const ca      = chart.chartArea;
+  const xRange  = chart.scales.x.max - chart.scales.x.min;
+  const pxRange = ca.right - ca.left;
+  const dt = (e.clientX - trimDragStartX) / pxRange * xRange;
+  const lo = chart.scales.x.min;
+  const hi = chart.scales.x.max;
+  trimWindowStart = Math.max(lo, Math.min(hi - csvDelta, trimDragStartWindow + dt));
+  appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
+  appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
+  updateTrimInfo();
+  chart.update("none");
+});
+
+document.addEventListener("mouseup", () => {
+  if (trimDragging) {
+    trimDragging = false;
+    forceChartEl.classList.remove("dragging");
+  }
+});
+
+// ── CSV delta input ────────────────────────────────────────────────────────
+document.getElementById("csv-delta-input").addEventListener("input", e => {
+  const val = parseFloat(e.target.value);
+  if (!appData || !isFinite(val) || val <= 0) return;
+  csvDelta = val;
+  appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
+  appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
+  updateTrimInfo();
+  if (chart) chart.update("none");
+});
+
+// ── Interpolation ──────────────────────────────────────────────────────────
+function interp(t) {
+  if (!ch3Times.length) return 0;
+  if (t <= ch3Times[0]) return ch3Volts[0];
+  if (t >= ch3Times[ch3Times.length - 1]) return ch3Volts[ch3Times.length - 1];
+  let lo = 0, hi = ch3Times.length - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (ch3Times[mid] <= t) lo = mid; else hi = mid;
+  }
+  const t1 = ch3Times[lo], t2 = ch3Times[hi];
+  if (t2 === t1) return ch3Volts[lo];
+  return ch3Volts[lo] + (t - t1) / (t2 - t1) * (ch3Volts[hi] - ch3Volts[lo]);
+}
+
+// ── Dot + tooltip update ───────────────────────────────────────────────────
+function updateDot(masterTime) {
+  if (!chart || !appData) return;
+  const tooltip = document.getElementById("dot-tooltip");
+  // ch3Times is already relative to B1 (server zeroes it), masterTime is also relative to B1
+  const xMin = ch3Times.length ? ch3Times[0] : -Infinity;
+  const xMax = ch3Times.length ? ch3Times[ch3Times.length - 1] : Infinity;
+  if (masterTime < xMin || masterTime > xMax) {
+    chart.data.datasets[1].data = [];
+    chart.update("none");
+    tooltip.style.display = "none";
+    return;
+  }
+
+  const v = interp(masterTime);
+  chart.data.datasets[1].data = [{ x: masterTime, y: v }];
+  chart.update("none");
+
+  updateWaveformCursor(masterTime);
+
+  const xChartMin = chart.scales.x ? chart.scales.x.min : 0;
+  const xChartMax = chart.scales.x ? chart.scales.x.max : appData.experiment_duration;
+  if (masterTime < xChartMin || masterTime > xChartMax) {
+    tooltip.style.display = "none";
+    return;
+  }
+
+  try {
+    const meta = chart.getDatasetMeta(1);
+    if (meta.data && meta.data[0]) {
+      const pt     = meta.data[0];
+      const canvas = document.getElementById("force-chart");
+      tooltip.style.left    = (canvas.offsetLeft + pt.x + 14) + "px";
+      tooltip.style.top     = (canvas.offsetTop  + pt.y - 44) + "px";
+      tooltip.style.display = "block";
+      document.getElementById("tt-time").textContent = "t = " + masterTime.toFixed(2) + " s";
+      document.getElementById("tt-volt").textContent = "V = " + v.toFixed(4) + " V";
+    }
+  } catch (_) {}
+}
+
+// ── Sync ───────────────────────────────────────────────────────────────────
+// Linear time-mapping between video time and master (graph X) time, anchored
+// at BOTH buzzer events:
+//   video buzz1_vid  ↔  master 0                        (CSV t_buzz1_csv)
+//   video buzz2_vid  ↔  master appData.experiment_duration (CSV t_buzz2_csv)
+// This guarantees the dot and video are aligned at both endpoints even if the
+// user-marked video duration differs slightly from the CSV duration.
+function videoToMaster(vt, vd) {
+  const vdur = vd.buzz2_vid - vd.buzz1_vid;
+  if (vdur <= 0) return vt - vd.buzz1_vid;
+  return (vt - vd.buzz1_vid) * appData.experiment_duration / vdur;
+}
+
+function masterToVideo(mt, vd) {
+  const vdur = vd.buzz2_vid - vd.buzz1_vid;
+  if (appData.experiment_duration <= 0) return vd.buzz1_vid + mt;
+  return vd.buzz1_vid + mt * vdur / appData.experiment_duration;
+}
+
+function masterTime() {
+  return videoToMaster(allVideos[0].currentTime, videoData[0]);
+}
+
+function seekAll(mt) {
+  const cmt = Math.max(0, Math.min(mt, appData.experiment_duration));
+  for (let i = 0; i < allVideos.length; i++) {
+    allVideos[i].currentTime = masterToVideo(cmt, videoData[i]);
+  }
+  slider.value = cmt;
+  timeDisplay.textContent = cmt.toFixed(2) + " s";
+  updateDot(cmt);
+}
+
+function onTimeUpdate() {
+  if (isScrubbing) return;
+  const mt = masterTime();
+
+  // Sync other videos to the same master time
+  for (let i = 1; i < allVideos.length; i++) {
+    const target = masterToVideo(mt, videoData[i]);
+    if (Math.abs(allVideos[i].currentTime - target) > 0.15) {
+      allVideos[i].currentTime = target;
+    }
+  }
+
+  const disp = Math.max(0, Math.min(mt, appData.experiment_duration));
+  slider.value = disp;
+  timeDisplay.textContent = mt.toFixed(2) + " s";
+  updateDot(mt);
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+slider.addEventListener("mousedown",  () => { isScrubbing = true; });
+slider.addEventListener("touchstart", () => { isScrubbing = true; }, { passive: true });
+slider.addEventListener("mouseup",    () => { isScrubbing = false; });
+slider.addEventListener("touchend",   () => { isScrubbing = false; });
+
+slider.addEventListener("input", e => {
+  const mt = parseFloat(e.target.value);
+  for (let i = 0; i < allVideos.length; i++) {
+    allVideos[i].currentTime = masterToVideo(mt, videoData[i]);
+  }
+  timeDisplay.textContent = mt.toFixed(2) + " s";
+  updateDot(mt);
+});
+
+playPauseBtn.addEventListener("click", () => {
+  if (isPlaying) {
+    allVideos.forEach(v => v.pause());
+    isPlaying = false;
+    playPauseBtn.textContent = "▶ Play";
+  } else {
+    allVideos.forEach(v => v.play().catch(() => {}));
+    isPlaying = true;
+    playPauseBtn.textContent = "⏸ Pause";
+  }
+});
+
+// ── Viewer back button ─────────────────────────────────────────────────────
+document.getElementById("viewer-back-btn").addEventListener("click", () => {
+  allVideos.forEach(v => v.pause());
+  isPlaying = false;
+  playPauseBtn.textContent = "▶ Play";
+  document.getElementById("viewer-section").style.display = "none";
+  initCalibration(pendingResult);
+});
+
+// ── Browser history interception (block back/forward gestures) ────────────
+history.replaceState({ page: "upload" }, "", "");
+
+window.addEventListener("popstate", () => {
+  // Determine which page is currently visible and re-push that state
+  // so the browser never navigates away on back/forward gestures.
+  const onUpload = document.getElementById("upload-section").style.display    !== "none";
+  const onCal    = document.getElementById("calibrate-section").style.display !== "none";
+  const page     = onUpload ? "upload" : onCal ? "calibrate" : "viewer";
+  history.pushState({ page }, "", "");
+});
+
+// ── Reset ──────────────────────────────────────────────────────────────────
+resetBtn.addEventListener("click", () => {
+  allVideos.forEach(v => { v.pause(); v.src = ""; });
+  allVideos = [];
+  calVideos.forEach(c => { c.video.pause(); c.video.removeAttribute("src"); c.video.load(); });
+  calVideos = [];
+  if (chart) { chart.destroy(); chart = null; }
+  isPlaying       = false;
+  isScrubbing     = false;
+  trimWindowStart = 0;
+  csvDelta        = 0;
+  trimDragging    = false;
+  ch1Times        = [];
+  ch1Volts        = [];
+  waveformBg      = null;
+  allBuzzRel      = [0];
+  calVideoAnchors = [];
+  document.getElementById("csv-delta-input").value     = "";
+  document.getElementById("trim-window-info").textContent = "";
+  pendingResult = null;
+  appData       = null;
+
+  videoFiles = [];
+  csvFiles   = [];
+  videoListEl.innerHTML = "";
+  csvListEl.innerHTML   = "";
+  document.getElementById("cal-videos-list").innerHTML  = "";
+  document.getElementById("cal-delta-warning").style.display = "none";
+  videoInput.value = "";
+  csvInput.value   = "";
+  processBtn.disabled = true;
+  hideStatus();
+
+  document.getElementById("viewer-section").style.display    = "none";
+  document.getElementById("calibrate-section").style.display = "none";
+  document.getElementById("upload-section").style.display    = "block";
+  history.replaceState({ page: "upload" }, "", "");
+});
+</script>
+</body>
+</html>

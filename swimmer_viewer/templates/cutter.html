@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Video Buzzer Cutter</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #111; color: #ddd; min-height: 100vh; }
+
+header {
+  background: #16213e; padding: 13px 26px;
+  border-bottom: 2px solid #4a9eff;
+  display: flex; align-items: baseline; gap: 14px;
+}
+header h1 { font-size: 1.2rem; color: #4a9eff; }
+header p  { color: #556; font-size: 0.8rem; }
+
+main { max-width: 1060px; margin: 0 auto; padding: 22px 18px; }
+
+/* ── Upload ── */
+#drop-zone {
+  border: 2px dashed #2e2e2e; border-radius: 10px;
+  padding: 52px 32px; text-align: center; cursor: pointer;
+  background: #161616; transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+#drop-zone:hover, #drop-zone.drag-over { border-color: #4a9eff; background: #14202e; }
+#drop-zone .icon { font-size: 2.2rem; margin-bottom: 10px; }
+#drop-zone strong { font-size: 0.95rem; color: #bbb; }
+#drop-zone p { color: #555; font-size: 0.8rem; margin-top: 5px; }
+#file-input { display: none; }
+
+/* ── Progress / status ── */
+#progress-wrap { display: none; margin-top: 12px; }
+#progress-bar  { height: 5px; background: #1e1e1e; border-radius: 3px; overflow: hidden; }
+#progress-fill { height: 100%; background: #4a9eff; width: 0; transition: width 0.15s; }
+#progress-text { font-size: 0.76rem; color: #555; text-align: right; margin-top: 4px; }
+
+#status {
+  display: none; align-items: center; gap: 10px;
+  padding: 9px 13px; background: #141f10; border-radius: 7px;
+  margin-top: 10px; font-size: 0.85rem; color: #8aca78;
+}
+.spinner {
+  width: 16px; height: 16px; flex-shrink: 0;
+  border: 2px solid #1e2e1e; border-top-color: #4a9eff;
+  border-radius: 50%; animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Alerts ── */
+#alert-area { margin-bottom: 12px; }
+.alert { padding: 10px 14px; border-radius: 7px; font-size: 0.84rem; }
+.alert-error { background: #240d0d; border: 1px solid #501818; color: #ff8888; }
+.alert-info  { background: #0c230d; border: 1px solid #185018; color: #88ee99; }
+
+/* ── Main panel ── */
+#panel { display: none; margin-top: 20px; }
+
+/* ── Video ── */
+#video-section {
+  background: #141414; border-radius: 10px;
+  padding: 14px; margin-bottom: 14px;
+}
+video { width: 100%; max-height: 300px; border-radius: 7px; background: #000; display: block; }
+
+#time-row {
+  display: flex; align-items: center; gap: 16px;
+  margin-top: 10px; flex-wrap: wrap;
+}
+#current-time {
+  font-size: 1rem; font-family: monospace;
+  color: #eee; letter-spacing: 0.03em;
+}
+#current-time span { color: #4a9eff; font-size: 1.15rem; font-weight: 700; }
+#duration-display { font-size: 0.8rem; color: #445; font-family: monospace; }
+
+/* ── Waveform ── */
+#waveform-section {
+  background: #141414; border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+#wf-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #444; margin-bottom: 8px; }
+canvas#waveform { display: block; width: 100%; height: 90px; cursor: pointer; border-radius: 4px; }
+#wf-hint { font-size: 0.72rem; color: #444; margin-top: 5px; }
+#zoom-row {
+  display: flex; align-items: center; gap: 10px; margin-top: 8px;
+}
+#zoom-row label { font-size: 0.75rem; color: #445; white-space: nowrap; }
+#zoom-slider {
+  flex: 1; accent-color: #4a9eff; height: 4px; cursor: pointer;
+}
+#zoom-label { font-size: 0.75rem; color: #445; font-family: monospace; white-space: nowrap; min-width: 56px; text-align: right; }
+
+/* ── Segments ── */
+#seg-section { background: #141414; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+
+#seg-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+#seg-top h2 { font-size: 0.92rem; color: #ccc; flex: 1; }
+
+table#segtable { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+#segtable th {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em;
+  color: #445; padding: 5px 8px; border-bottom: 1px solid #1e1e1e; text-align: left;
+}
+#segtable td { padding: 5px 6px; border-bottom: 1px solid #1a1a1a; vertical-align: middle; }
+#segtable tr:last-child td { border-bottom: none; }
+
+.sw { width: 8px; border-radius: 2px; height: 28px; display: inline-block; }
+td.td-num { color: #445; width: 28px; font-size: 0.78rem; text-align: center; }
+
+input.seg-name {
+  background: #1c1c1c; border: 1px solid #2a2a2a; color: #ccc;
+  padding: 5px 8px; border-radius: 5px; font-size: 0.82rem; width: 170px;
+}
+input.seg-name:focus { border-color: #4a9eff; outline: none; }
+
+.btn-set {
+  padding: 5px 11px; border: none; border-radius: 5px;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  background: #1c3a5a; color: #4a9eff; transition: background 0.12s;
+  white-space: nowrap;
+}
+.btn-set:hover { background: #1e4a72; }
+.btn-set.flash { background: #0c4020 !important; color: #66ee88 !important; }
+
+input.time-inp {
+  width: 72px; background: #1a1a1a; border: 1px solid #2a2a2a;
+  color: #ddd; padding: 5px 6px; border-radius: 5px;
+  font-size: 0.83rem; font-family: monospace; text-align: right;
+}
+input.time-inp:focus { border-color: #4a9eff; outline: none; }
+
+.td-arrow { color: #334; font-size: 1rem; padding: 0 4px !important; }
+.td-dur   { color: #556; font-family: monospace; white-space: nowrap; min-width: 58px; font-size: 0.8rem; }
+
+.btn-remove {
+  background: none; border: 1px solid #2a1a1a; color: #553;
+  width: 26px; height: 26px; border-radius: 5px; cursor: pointer;
+  font-size: 1rem; line-height: 1; transition: all 0.12s;
+}
+.btn-remove:hover { background: #2a1010; color: #ee5555; border-color: #441010; }
+
+/* ── Bottom bar ── */
+#bottom-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+#sel-info { font-size: 0.8rem; color: #445; flex: 1; }
+
+.btn {
+  padding: 9px 20px; border: none; border-radius: 7px;
+  cursor: pointer; font-size: 0.87rem; font-weight: 600; transition: all 0.12s;
+}
+.btn-primary { background: #4a9eff; color: #000; }
+.btn-primary:hover { background: #70b8ff; }
+.btn-primary:disabled { background: #1a304a; color: #334; cursor: default; }
+.btn-add { background: #1e2e1e; color: #8aca78; border: 1px solid #243424; }
+.btn-add:hover { background: #243424; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>✂ Video Buzzer Cutter</h1>
+  <p>Upload · set segment boundaries manually · cut & download</p>
+</header>
+
+<main>
+  <div id="alert-area"></div>
+
+  <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <div class="icon">🎬</div>
+    <strong>Drop a video here or click to select</strong>
+    <p>MP4 · MOV · AVI · MKV</p>
+    <input type="file" id="file-input" accept="video/*">
+  </div>
+
+  <div id="progress-wrap">
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+    <div id="progress-text">Uploading…</div>
+  </div>
+  <div id="status"><div class="spinner"></div><span id="status-text">Processing…</span></div>
+
+  <!-- ── Main panel ── -->
+  <div id="panel">
+
+    <!-- Video -->
+    <div id="video-section">
+      <video id="vid" controls preload="metadata"></video>
+      <div id="time-row">
+        <div id="current-time">Current: <span id="ct">0.00</span> s</div>
+        <div id="duration-display"></div>
+      </div>
+    </div>
+
+    <!-- Waveform -->
+    <div id="waveform-section">
+      <div id="wf-label">Audio Waveform — click to seek</div>
+      <canvas id="waveform" height="90"></canvas>
+      <div id="zoom-row">
+        <label>Zoom</label>
+        <input type="range" id="zoom-slider" min="1" max="50" step="0.5" value="1">
+        <span id="zoom-label">full</span>
+      </div>
+      <div id="wf-hint">Click to seek · Drag to pan when zoomed · Segment start (solid) and end (dashed) markers</div>
+    </div>
+
+    <!-- Segments -->
+    <div id="seg-section">
+      <div id="seg-top">
+        <h2>Segments</h2>
+      </div>
+      <table id="segtable">
+        <thead>
+          <tr>
+            <th></th><th>#</th><th>Name</th>
+            <th colspan="2">Start</th>
+            <th></th>
+            <th colspan="2">End</th>
+            <th>Duration</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="seg-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Bottom -->
+    <div id="bottom-bar">
+      <span id="sel-info"></span>
+      <button class="btn btn-add" onclick="addSegment()">＋ Add Segment</button>
+      <button class="btn btn-primary" id="cut-btn" onclick="cutAll()">✂ Cut &amp; Download ZIP</button>
+    </div>
+
+  </div><!-- /panel -->
+</main>
+
+<script>
+// ── State ────────────────────────────────────────────────────────
+let sessionId = null, videoFile = null, totalDur = 0, wfBins = [];
+
+// Each segment: { name, start (seconds|null), end (seconds|null) }
+let segments = [{ name: 'Segment_01', start: null, end: null }];
+
+const PALETTE = [
+  '#4a9eff','#ff8c3a','#3adf8c','#c84aff',
+  '#ff4a8c','#ffe03a','#3affee','#ff6b3a',
+];
+
+// ── Utils ────────────────────────────────────────────────────────
+const fmtS  = s => s == null ? '—' : s.toFixed(2);
+const fmtDur = s => s == null || s <= 0 ? '—' :
+  s < 60 ? `${s.toFixed(2)} s` : `${Math.floor(s/60)}m ${(s%60).toFixed(1)}s`;
+const r2 = n => Math.round(n * 100) / 100;
+
+function showAlert(msg, type='error') {
+  document.getElementById('alert-area').innerHTML =
+    `<div class="alert alert-${type}">${msg}</div>`;
+}
+function clearAlert() { document.getElementById('alert-area').innerHTML=''; }
+function showStatus(t) { document.getElementById('status').style.display='flex'; document.getElementById('status-text').textContent=t; }
+function hideStatus()  { document.getElementById('status').style.display='none'; }
+
+// ── Upload ───────────────────────────────────────────────────────
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f) doUpload(f); });
+document.getElementById('file-input').addEventListener('change', e => { if(e.target.files[0]) doUpload(e.target.files[0]); e.target.value=''; });
+
+function doUpload(file) {
+  clearAlert();
+  document.getElementById('panel').style.display = 'none';
+  const pw = document.getElementById('progress-wrap');
+  const pf = document.getElementById('progress-fill');
+  const pt = document.getElementById('progress-text');
+  pw.style.display = 'block'; pf.style.width = '0%'; pt.textContent = 'Uploading 0%…';
+
+  const fd = new FormData();
+  fd.append('video', file);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/upload');
+  xhr.upload.onprogress = e => {
+    if (!e.lengthComputable) return;
+    const p = Math.round(e.loaded/e.total*100);
+    pf.style.width = p+'%'; pt.textContent = `Uploading ${p}%…`;
+  };
+  xhr.upload.onload = () => { pf.style.width='100%'; pt.textContent='Extracting audio…'; showStatus('Extracting audio waveform…'); };
+  xhr.onload = () => {
+    pw.style.display='none'; hideStatus();
+    if (xhr.status !== 200) {
+      let msg='Upload failed.'; try { msg=JSON.parse(xhr.responseText).error||msg; } catch(_){}
+      showAlert(msg); return;
+    }
+    initPanel(JSON.parse(xhr.responseText));
+  };
+  xhr.onerror = () => { pw.style.display='none'; hideStatus(); showAlert('Network error during upload.'); };
+  xhr.send(fd);
+}
+
+function initPanel(data) {
+  sessionId = data.session_id;
+  videoFile = data.filename;
+  totalDur  = data.duration;
+  wfBins    = data.waveform;
+
+  document.getElementById('vid').src = `/video/${sessionId}/${encodeURIComponent(videoFile)}`;
+  document.getElementById('duration-display').textContent = `Total: ${fmtDur(totalDur)}`;
+
+  // Reset to one empty segment
+  segments = [{ name: 'Segment_01', start: null, end: null }];
+
+  document.getElementById('panel').style.display = 'block';
+  requestAnimationFrame(() => {
+    resizeCanvas();
+    drawWaveform();
+    renderTable();
+  });
+}
+
+// ── Video time tracking ──────────────────────────────────────────
+const vid = document.getElementById('vid');
+vid.addEventListener('timeupdate', () => {
+  document.getElementById('ct').textContent = vid.currentTime.toFixed(2);
+  if (!vid.paused) ensurePlayheadVisible();
+  drawWaveform();
+});
+
+// ── Waveform ─────────────────────────────────────────────────────
+const canvas = document.getElementById('waveform');
+const ctx    = canvas.getContext('2d');
+
+let zoom   = 1;    // 1 = full view
+let panSec = 0;    // left edge of visible window in seconds
+
+function visDur()  { return totalDur / zoom; }
+function visEnd()  { return panSec + visDur(); }
+
+function clampPan() {
+  panSec = Math.max(0, Math.min(totalDur - visDur(), panSec));
+}
+
+function tToX(t) { return ((t - panSec) / visDur()) * canvas.width; }
+function xToT(x) { return Math.max(0, Math.min(totalDur, panSec + (x / canvas.width) * visDur())); }
+const canX = e => { const r = canvas.getBoundingClientRect(); return (e.clientX - r.left) * (canvas.width / r.width); };
+
+function ensurePlayheadVisible() {
+  if (zoom <= 1) return;
+  const t = vid.currentTime, vd = visDur(), margin = vd * 0.08;
+  if      (t < panSec + margin)       panSec = Math.max(0, t - margin);
+  else if (t > panSec + vd - margin)  panSec = Math.min(totalDur - vd, t - vd + margin);
+}
+
+function updateZoomLabel() {
+  const vd = visDur();
+  document.getElementById('zoom-label').textContent =
+    zoom <= 1 ? 'full' : `${fmtDur(vd)} shown`;
+}
+
+// Zoom slider
+document.getElementById('zoom-slider').addEventListener('input', e => {
+  const centre = panSec + visDur() / 2;   // keep view centred on same spot
+  zoom = parseFloat(e.target.value);
+  panSec = centre - visDur() / 2;
+  clampPan();
+  canvas.style.cursor = zoom > 1 ? 'grab' : 'pointer';
+  updateZoomLabel();
+  drawWaveform();
+});
+
+function resizeCanvas() {
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = 90;
+}
+window.addEventListener('resize', () => { if (sessionId) { resizeCanvas(); drawWaveform(); } });
+
+function drawWaveform() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.fillStyle = '#0e0e0e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Segment colour bands
+  segments.forEach((seg, i) => {
+    if (seg.start == null || seg.end == null || seg.end <= seg.start) return;
+    ctx.fillStyle = PALETTE[i % PALETTE.length] + '22';
+    const x1 = tToX(seg.start), x2 = tToX(seg.end);
+    ctx.fillRect(x1, 0, x2 - x1, H);
+  });
+
+  // Waveform bars — render only bins in the visible window
+  const secsPerBin = totalDur / wfBins.length;
+  const binPx      = (secsPerBin / visDur()) * W;
+  ctx.fillStyle = '#3a6a9a';
+  wfBins.forEach((v, i) => {
+    const tMid = (i + 0.5) * secsPerBin;
+    const x    = tToX(tMid);
+    if (x < -binPx || x > W + binPx) return;
+    const bh = v * H * 0.86;
+    ctx.fillRect(x - binPx / 2, (H - bh) / 2, Math.max(1, binPx - 0.4), bh);
+  });
+
+  // Segment markers
+  segments.forEach((seg, i) => {
+    const col = PALETTE[i % PALETTE.length], lbl = i + 1;
+    if (seg.start != null) {
+      const x = tToX(seg.start);
+      if (x >= -4 && x <= W + 4) {
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.moveTo(x-6,0); ctx.lineTo(x+6,0); ctx.lineTo(x,9); ctx.closePath(); ctx.fill();
+        ctx.font = 'bold 10px monospace'; ctx.fillStyle = col;
+        ctx.fillText(`S${lbl}`, Math.min(x+3, W-28), 21);
+      }
+    }
+    if (seg.end != null) {
+      const x = tToX(seg.end);
+      if (x >= -4 && x <= W + 4) {
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.moveTo(x-6,H); ctx.lineTo(x+6,H); ctx.lineTo(x,H-9); ctx.closePath(); ctx.fill();
+        ctx.font = 'bold 10px monospace'; ctx.fillStyle = col;
+        ctx.fillText(`E${lbl}`, Math.min(x+3, W-28), H-12);
+      }
+    }
+  });
+
+  ctx.setLineDash([]);
+
+  // Playhead
+  if (totalDur > 0) {
+    const px = tToX(vid.currentTime);
+    if (px >= 0 && px <= W) {
+      ctx.strokeStyle = '#ffffff55'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
+    }
+  }
+
+  // Zoom window indicator (thin bar at bottom when zoomed)
+  if (zoom > 1) {
+    const barH = 3, y = H - barH;
+    ctx.fillStyle = '#ffffff10';
+    ctx.fillRect(0, y, W, barH);
+    ctx.fillStyle = '#4a9eff66';
+    const wx = (panSec / totalDur) * W;
+    const ww = (visDur() / totalDur) * W;
+    ctx.fillRect(wx, y, ww, barH);
+  }
+}
+
+// ── Canvas pan / click ────────────────────────────────────────────
+let wfPanning = false, wfPanStartX = 0, wfPanStartSec = 0, wfMoved = false;
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  wfPanning    = true;
+  wfPanStartX  = canX(e);
+  wfPanStartSec = panSec;
+  wfMoved      = false;
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!wfPanning) return;
+  const dx = canX(e) - wfPanStartX;
+  if (Math.abs(dx) > 4) {
+    wfMoved = true;
+    panSec  = wfPanStartSec - (dx / canvas.width) * visDur();
+    clampPan();
+    canvas.style.cursor = 'grabbing';
+    drawWaveform();
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (!wfMoved) {
+    vid.currentTime = xToT(canX(e));
+  }
+  wfPanning = false;
+  canvas.style.cursor = zoom > 1 ? 'grab' : 'pointer';
+});
+
+canvas.addEventListener('mouseleave', () => {
+  wfPanning = false;
+  canvas.style.cursor = zoom > 1 ? 'grab' : 'pointer';
+});
+
+// ── Segment table ────────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('seg-body');
+  tbody.innerHTML = '';
+
+  segments.forEach((seg, i) => {
+    const col = PALETTE[i % PALETTE.length];
+    const dur = (seg.start != null && seg.end != null && seg.end > seg.start)
+      ? seg.end - seg.start : null;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="sw" style="background:${col}"></span></td>
+      <td class="td-num">${i+1}</td>
+      <td><input type="text" class="seg-name" value="${seg.name}" data-i="${i}"></td>
+      <td>
+        <button class="btn-set" data-i="${i}" data-w="start">Set Start</button>
+      </td>
+      <td>
+        <input type="number" class="time-inp" data-i="${i}" data-w="start"
+          step="0.01" min="0" max="${totalDur}"
+          value="${seg.start != null ? seg.start : ''}" placeholder="—">
+      </td>
+      <td class="td-arrow">→</td>
+      <td>
+        <button class="btn-set" data-i="${i}" data-w="end">Set End</button>
+      </td>
+      <td>
+        <input type="number" class="time-inp" data-i="${i}" data-w="end"
+          step="0.01" min="0" max="${totalDur}"
+          value="${seg.end != null ? seg.end : ''}" placeholder="—">
+      </td>
+      <td class="td-dur" id="dur-${i}">${fmtDur(dur)}</td>
+      <td>
+        ${segments.length > 1
+          ? `<button class="btn-remove" data-i="${i}">×</button>`
+          : '<span style="width:26px;display:inline-block"></span>'}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  updateInfo();
+}
+
+// Event delegation for the table
+document.getElementById('seg-body').addEventListener('click', e => {
+  // Set Start / Set End
+  const btn = e.target.closest('.btn-set');
+  if (btn) {
+    const i = +btn.dataset.i, w = btn.dataset.w;
+    const t = r2(vid.currentTime);
+    segments[i][w] = t;
+    // update the input
+    const inp = document.querySelector(`.time-inp[data-i="${i}"][data-w="${w}"]`);
+    if (inp) inp.value = t;
+    updateDur(i);
+    drawWaveform();
+    // flash
+    btn.classList.add('flash');
+    setTimeout(() => btn.classList.remove('flash'), 500);
+    return;
+  }
+  // Remove
+  const rm = e.target.closest('.btn-remove');
+  if (rm) {
+    segments.splice(+rm.dataset.i, 1);
+    renderTable();
+    drawWaveform();
+  }
+});
+
+document.getElementById('seg-body').addEventListener('input', e => {
+  const inp = e.target;
+  if (inp.classList.contains('seg-name')) {
+    segments[+inp.dataset.i].name = inp.value;
+  }
+  if (inp.classList.contains('time-inp')) {
+    const i = +inp.dataset.i, w = inp.dataset.w;
+    const v = inp.value.trim();
+    segments[i][w] = v === '' ? null : parseFloat(v);
+    updateDur(i);
+    drawWaveform();
+  }
+});
+
+function updateDur(i) {
+  const seg = segments[i];
+  const dur = (seg.start != null && seg.end != null && seg.end > seg.start)
+    ? seg.end - seg.start : null;
+  const el = document.getElementById(`dur-${i}`);
+  if (el) el.textContent = fmtDur(dur);
+  updateInfo();
+}
+
+function updateInfo() {
+  const ready = segments.filter(s => s.start!=null && s.end!=null && s.end>s.start).length;
+  document.getElementById('sel-info').textContent =
+    `${ready} of ${segments.length} segment${segments.length!==1?'s':''} ready`;
+}
+
+function addSegment() {
+  const n = segments.length + 1;
+  segments.push({ name: `Segment_${String(n).padStart(2,'0')}`, start: null, end: null });
+  renderTable();
+  drawWaveform();
+  // scroll to bottom of table
+  document.getElementById('seg-body').lastElementChild?.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+// ── Cut & download ───────────────────────────────────────────────
+async function cutAll() {
+  clearAlert();
+  const toSend = segments
+    .map((s,i) => ({ name: s.name || `Segment_${i+1}`, start: s.start, end: s.end }))
+    .filter(s => s.start != null && s.end != null && s.end > s.start);
+
+  if (!toSend.length) {
+    showAlert('No segments have both a start and end time set.'); return;
+  }
+
+  const btn = document.getElementById('cut-btn');
+  btn.disabled = true;
+  btn.textContent = `✂ Cutting ${toSend.length} segment${toSend.length>1?'s':''}…`;
+  showStatus(`Running ffmpeg on ${toSend.length} segment${toSend.length>1?'s':''}…`);
+
+  try {
+    const resp = await fetch('/cut', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, filename: videoFile, segments: toSend }),
+    });
+    if (!resp.ok) {
+      const d = await resp.json().catch(()=>({}));
+      showAlert(d.error || `Cut failed (HTTP ${resp.status}).`); return;
+    }
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `cuts_${videoFile.replace(/\.[^.]+$/,'')}.zip`;
+    a.click(); URL.revokeObjectURL(url);
+    showAlert(`Downloaded ${toSend.length} segment${toSend.length!==1?'s':''}.`, 'info');
+  } catch(err) {
+    showAlert(`Network error: ${err.message}`);
+  } finally {
+    hideStatus();
+    btn.disabled = false; btn.textContent = '✂ Cut & Download ZIP';
+  }
+}
+</script>
+</body>
+</html>

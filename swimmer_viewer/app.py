@@ -11,9 +11,14 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from scipy.io import wavfile
-from scipy.signal import butter, filtfilt
 from flask import Flask, request, jsonify, render_template, send_from_directory, Response, send_file
+
+from audio_analysis import (
+    AUDIO_SAMPLE_RATE,
+    detect_buzzer_onsets,
+    detect_buzzer_csv_onset,
+    compute_waveform_envelope,
+)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024 * 1024  # 4 GB
@@ -116,80 +121,7 @@ def parse_phidget_csv(filepath):
 
 
 # ---------------------------------------------------------------------------
-# CH1 buzzer detection
-# ---------------------------------------------------------------------------
-
-def detect_buzzer_csv(times, voltages, min_separation=2.0):
-    """Detect up to two buzzer pulses in the CH1 signal.
-
-    Uses the GLOBAL median as baseline so that a sustained pulse (longer than
-    the old 2-second rolling window) is still detected correctly.  The Phidget
-    buzzer signal jumps from a flat baseline (~-0.00422 V) to a much higher
-    level (~+0.00297 V); using a rolling baseline caused it to track the pulse
-    and produce near-zero residual, making detection impossible.
-
-    Returns (t_buzz1, t_buzz2, info_dict) where t_buzz2 may be None.
-    """
-    duration_s = float(times[-1] - times[0])
-    global_median = float(np.median(voltages))
-    global_mad = float(np.median(np.abs(voltages - global_median)))
-    residual = np.abs(voltages - global_median)
-    residual_max = float(residual.max())
-
-    info = {
-        "duration_s": round(duration_s, 2),
-        "global_median": round(global_median, 8),
-        "global_mad": global_mad,
-        "residual_max": residual_max,
-        "multiplier_used": None,
-        "n_events_found": 0,
-    }
-
-    def _cluster_separate(above, sep=None):
-        evts = []
-        in_ev, ev_start = False, 0
-        for i, a in enumerate(above):
-            if a and not in_ev:
-                in_ev, ev_start = True, i
-            elif not a and in_ev:
-                in_ev = False
-                evts.append(float(times[(ev_start + i) // 2]))
-        if in_ev:
-            c = (ev_start + len(above)) // 2
-            if c < len(times):
-                evts.append(float(times[c]))
-        s = sep if sep is not None else min_separation
-        distinct = []
-        for t in evts:
-            if not distinct or (t - distinct[-1]) >= s:
-                distinct.append(t)
-        return distinct
-
-    noise = global_mad if global_mad > 1e-12 else float(np.std(voltages - global_median)) or 1e-8
-    for multiplier in (50, 20, 10, 5, 3):
-        mask = residual > multiplier * noise
-        distinct = _cluster_separate(mask)
-        if distinct:
-            info["multiplier_used"] = multiplier
-            info["n_events_found"] = len(distinct)
-            info["all_buzz_times"] = _cluster_separate(mask, sep=0.4)
-            t1 = distinct[0]
-            t2 = distinct[1] if len(distinct) >= 2 else None
-            t3 = distinct[2] if len(distinct) >= 3 else None
-            return t1, t2, t3, info
-
-    raise ValueError(
-        f"No buzzer events detected in CH1 "
-        f"(recording: {duration_s/60:.1f} min, "
-        f"max deviation from median: {residual_max:.2e}, "
-        f"global MAD: {global_mad:.2e}). "
-        "Use the manual override fields to enter the buzzer times directly."
-    )
-
-
-
-# ---------------------------------------------------------------------------
-# Video audio extraction + buzzer detection
+# Video audio extraction
 # ---------------------------------------------------------------------------
 
 def _valid_ffmpeg_candidate(candidate):
@@ -263,8 +195,8 @@ def resolve_ffmpeg_executable():
     return None
 
 
-def extract_audio(video_path, output_wav, sample_rate=16000):
-    """Use ffmpeg to extract mono 16 kHz WAV from a video file."""
+def extract_audio(video_path, output_wav, sample_rate=AUDIO_SAMPLE_RATE):
+    """Use ffmpeg to extract mono WAV from a video file."""
     ffmpeg_path = resolve_ffmpeg_executable()
     if not ffmpeg_path:
         raise RuntimeError("ffmpeg_not_found")
@@ -282,141 +214,6 @@ def extract_audio(video_path, output_wav, sample_rate=16000):
         raise RuntimeError("ffmpeg_not_found")
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg_error: {result.stderr[-800:]}")
-
-
-def bandpass_filter(data, sr, lowcut, highcut, order=4):
-    """Apply a zero-phase Butterworth bandpass filter to a 1-D audio array."""
-    nyq = sr / 2.0
-    low  = max(1e-4, min(lowcut  / nyq, 0.9999))
-    high = max(low + 1e-4, min(highcut / nyq, 0.9999))
-    b, a = butter(order, [low, high], btype="band")
-    return filtfilt(b, a, data.astype(np.float64)).astype(data.dtype)
-
-
-def compute_audio_waveform(wav_path, t_start, t_end, n_bins=400, lowcut=None, highcut=None):
-    """Return (rms_list, actual_t0, actual_t1) normalised to [0, 1].
-
-    If lowcut and highcut are provided, a bandpass filter is applied first so
-    the waveform display focuses on the buzzer frequency band.
-    """
-    try:
-        sr, data = wavfile.read(wav_path)
-    except Exception:
-        return [0.0] * n_bins, float(t_start), float(t_end)
-
-    data = data.astype(np.float32)
-
-    if lowcut is not None and highcut is not None and highcut > lowcut:
-        try:
-            data = bandpass_filter(data, sr, lowcut, highcut).astype(np.float32)
-        except Exception:
-            pass  # fall back to unfiltered
-
-    total = len(data) / sr
-    t0 = max(0.0, float(t_start))
-    t1 = min(total, float(t_end))
-    s0, s1 = int(t0 * sr), int(t1 * sr)
-    segment = data[s0:s1]
-
-    if len(segment) < 2:
-        return [0.0] * n_bins, t0, t1
-
-    actual_bins = min(n_bins, len(segment))
-    bin_size = max(1, len(segment) // actual_bins)
-    wf = [
-        float(np.sqrt(np.mean(segment[i * bin_size:(i + 1) * bin_size] ** 2)))
-        for i in range(actual_bins)
-    ]
-    # Pad to requested length
-    while len(wf) < n_bins:
-        wf.append(0.0)
-    wf = wf[:n_bins]
-
-    mx = max(wf)
-    if mx > 1e-8:
-        wf = [v / mx for v in wf]
-
-    return wf, t0, t1
-
-
-def detect_buzzer_audio(wav_path, min_separation=3.0, lowcut=None, highcut=None):
-    """Detect up to two buzzer pulses from a WAV file.
-
-    Returns (t_buzz1, t_buzz2) where values may be None.
-    If lowcut/highcut are given, bandpass-filter before detection so that
-    noise outside the buzzer frequency band does not trigger false peaks.
-    """
-    try:
-        sr, data = wavfile.read(wav_path)
-    except Exception as e:
-        raise ValueError(f"Cannot read audio: {e}")
-
-    data = data.astype(np.float32)
-
-    if lowcut is not None and highcut is not None and highcut > lowcut:
-        try:
-            data = bandpass_filter(data, sr, lowcut, highcut).astype(np.float32)
-        except Exception:
-            pass
-
-    peak = np.max(np.abs(data))
-    if peak < 1e-8:
-        return None, None
-    data /= peak
-
-    window_size = max(2, int(0.05 * sr))   # ~50 ms
-    hop_size = max(1, window_size // 2)
-
-    n_frames = max(1, (len(data) - window_size) // hop_size + 1)
-    try:
-        shape = (n_frames, window_size)
-        strides = (data.strides[0] * hop_size, data.strides[0])
-        frames = np.lib.stride_tricks.as_strided(data, shape=shape, strides=strides)
-        rms = np.sqrt(np.mean(frames ** 2, axis=1))
-    except Exception:
-        rms = np.array([
-            np.sqrt(np.mean(data[i * hop_size: i * hop_size + window_size] ** 2))
-            for i in range(n_frames)
-        ])
-
-    frame_times = np.arange(n_frames) * hop_size / sr
-
-    median_rms = float(np.median(rms))
-    if median_rms < 1e-8:
-        return None, None
-
-    threshold = 3.0 * median_rms
-    min_frames = max(1, int(0.1 / (hop_size / sr)))  # 100 ms minimum duration
-
-    above = rms > threshold
-    events = []
-    in_event = False
-    event_start = 0
-    event_len = 0
-    for i, a in enumerate(above):
-        if a and not in_event:
-            in_event = True
-            event_start = i
-            event_len = 1
-        elif a and in_event:
-            event_len += 1
-        elif not a and in_event:
-            in_event = False
-            if event_len >= min_frames:
-                center = (event_start + i) // 2
-                events.append(float(frame_times[center]))
-    if in_event and event_len >= min_frames:
-        center = (event_start + min(event_start + event_len, n_frames - 1)) // 2
-        events.append(float(frame_times[center]))
-
-    distinct = []
-    for t in events:
-        if not distinct or (t - distinct[-1]) >= min_separation:
-            distinct.append(t)
-
-    t1 = distinct[0] if len(distinct) >= 1 else None
-    t2 = distinct[1] if len(distinct) >= 2 else None
-    return t1, t2
 
 
 # ---------------------------------------------------------------------------
@@ -499,7 +296,7 @@ def process():
         )
     else:
         try:
-            t_buzz1_csv, t_buzz2_csv, t_buzz3_csv, det_info = detect_buzzer_csv(ch1_times, ch1_voltages)
+            t_buzz1_csv, t_buzz2_csv, t_buzz3_csv, det_info = detect_buzzer_csv_onset(ch1_times, ch1_voltages)
             logger.info("CH1 detection: %s", det_info)
             all_buzz_times = det_info.get("all_buzz_times", [])
         except ValueError as e:
@@ -549,7 +346,7 @@ def process():
             return jsonify({"error": f"Audio extraction failed for '{vf}': {err}"}), 400
 
         try:
-            t_buzz1_vid, t_buzz2_vid = detect_buzzer_audio(audio_path, lowcut=use_lowcut, highcut=use_highcut)
+            t_buzz1_vid, t_buzz2_vid = detect_buzzer_onsets(audio_path, lowcut=use_lowcut, highcut=use_highcut)
         except ValueError as e:
             warnings.append(f"Audio read error for '{vf}': {e}")
             t_buzz1_vid, t_buzz2_vid = None, None
@@ -588,7 +385,7 @@ def process():
         # Audio waveform envelope for the video scrub bar overlay
         wf_start = max(0.0, (t_buzz1_vid or 0.0) - 5.0)
         wf_end = (t_buzz2_vid or (wf_start + 120.0)) + 5.0
-        wf_data, wf_t0, wf_t1 = compute_audio_waveform(audio_path, wf_start, wf_end)
+        wf_data, wf_t0, wf_t1, _ = compute_waveform_envelope(audio_path, wf_start, wf_end)
         video_results[-1]["waveform"]    = wf_data
         video_results[-1]["waveform_t0"] = round(wf_t0, 4)
         video_results[-1]["waveform_t1"] = round(wf_t1, 4)
@@ -661,13 +458,7 @@ def cal_waveform_endpoint(session_id, filename):
     if not os.path.isfile(audio_path):
         return jsonify({"error": "Audio not found — run /process first"}), 404
 
-    try:
-        sr, raw = wavfile.read(audio_path)
-        total_dur = len(raw) / sr
-    except Exception:
-        total_dur = max(t_end, 1.0)
-
-    wf_data, wf_t0, wf_t1 = compute_audio_waveform(
+    wf_data, wf_t0, wf_t1, total_dur = compute_waveform_envelope(
         audio_path, t_start, t_end, n_bins,
         lowcut=use_lowcut, highcut=use_highcut,
     )

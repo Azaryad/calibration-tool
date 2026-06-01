@@ -368,9 +368,10 @@ def process():
             vf, t_buzz1_vid, offset
         )
         video_results.append({
-            "filename": vf,
+            "filename":  vf,
             "offset":    round(float(offset), 4),
             "buzz1_vid": round(float(t_buzz1_vid), 4),
+            "buzz2_vid": None,   # user sets this manually on page 2
         })
 
         # Audio waveform envelope — span full CSV duration from sync point

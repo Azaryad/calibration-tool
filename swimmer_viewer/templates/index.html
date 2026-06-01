@@ -1030,6 +1030,7 @@ function _updateCalMarkers(cv) {
 
   const dur = cv.wfTotalDur || 1;
   const b1  = parseFloat(cv.inp1.value);
+  const b2  = parseFloat(cv.inp2.value);
 
   cv.wsRegions.clearRegions();
 
@@ -1042,20 +1043,17 @@ function _updateCalMarkers(cv) {
     });
   }
 
-  // Sync-point marker (draggable)
-  const r1 = addMarker(b1, "rgba(255,80,80,0.5)", "Sync", true);
-  if (r1) r1.on("update-end", () => {
-    cv.inp1.value = ((r1.start + r1.end) / 2).toFixed(3);
-    validateCal();
-    _updateCalMarkers(cv);
-  });
+  const r1 = addMarker(b1, "rgba(255,80,80,0.5)",  "B1", true);
+  const r2 = addMarker(b2, "rgba(51,238,119,0.5)", "B2", true);
+  if (r1) r1.on("update-end", () => { cv.inp1.value = ((r1.start+r1.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
+  if (r2) r2.on("update-end", () => { cv.inp2.value = ((r2.start+r2.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
 
-  // Delta preview line — shows where the experiment end would fall
+  // Orange Δ line — shows expected B2 location based on cal-delta-input (pre-filled from CSV)
   const refDelta = parseFloat(document.getElementById("cal-delta-input").value) || 0;
   if (refDelta > 0 && isFinite(b1)) {
     const deltaT = b1 + refDelta;
-    addMarker(deltaT, "rgba(240,160,48,0.55)", "Δ end", false);
-    if (cv.deltaInfoEl) cv.deltaInfoEl.textContent = `Δ end @ ${deltaT.toFixed(3)} s`;
+    addMarker(deltaT, "rgba(240,160,48,0.55)", "Δ", false);
+    if (cv.deltaInfoEl) cv.deltaInfoEl.textContent = `Δ @ ${deltaT.toFixed(3)} s`;
   }
 }
 
@@ -1117,15 +1115,18 @@ function initCalibration(data) {
   pendingResult = data;
   sessionId = data.session_id;
 
-  // Pre-fill experiment delta from CSV detection (user can override)
+  // Pre-fill delta from last detected CSV buzzer (used as Δ guide line on waveform)
+  const csvB2RelCal = (data.all_buzz_rel && data.all_buzz_rel.length)
+    ? data.all_buzz_rel[data.all_buzz_rel.length - 1]
+    : data.experiment_duration;
   const deltaInput = document.getElementById("cal-delta-input");
   if (!deltaInput.value || parseFloat(deltaInput.value) <= 0) {
-    deltaInput.value = data.experiment_duration.toFixed(2);
+    deltaInput.value = csvB2RelCal.toFixed(3);
   }
 
   // Show CSV info
   document.getElementById("cal-csv-info").innerHTML =
-    `CH1 buzzers detected — auto-detected duration: <strong>${data.experiment_duration.toFixed(2)} s</strong> (adjust the delta above if needed)` +
+    `CH1 first buzzer detected · last buzzer at <strong>${csvB2RelCal.toFixed(2)} s</strong> — use these as B1 / B2 reference in the videos` +
     (data.warnings && data.warnings.length
       ? `  ·  <span style="color:#f0c040;">${data.warnings.length} warning(s) — see viewer</span>` : "");
 
@@ -1141,8 +1142,10 @@ function initCalibration(data) {
       <video src="/video/${sessionId}/${encodeURIComponent(vd.filename)}" preload="auto" playsinline></video>
       <div class="cal-row">
         <span>Current: <span class="cur-time">0.00 s</span></span>
-        <button class="cal-set-btn" data-which="1">Set Sync Point</button>
-        <label>Sync point: <input type="number" step="0.001" min="0" class="cal-input inp-b1" value="${(vd.buzz1_vid ?? 0).toFixed(3)}"> s</label>
+        <button class="cal-set-btn" data-which="1">Set B1</button>
+        <label>Buzzer 1: <input type="number" step="0.001" min="0" class="cal-input inp-b1" value="${(vd.buzz1_vid ?? 0).toFixed(3)}"> s</label>
+        <button class="cal-set-btn" data-which="2">Set B2</button>
+        <label>Buzzer 2: <input type="number" step="0.001" min="0" class="cal-input inp-b2" value="${vd.buzz2_vid != null ? vd.buzz2_vid.toFixed(3) : ''}"> s</label>
         <span class="cal-status"></span>
         <span id="delta-line-info-${idx}" style="font-size:0.75rem;color:#f0a030;"></span>
       </div>
@@ -1169,6 +1172,7 @@ function initCalibration(data) {
     const videoEl     = card.querySelector("video");
     const curTime     = card.querySelector(".cur-time");
     const inp1        = card.querySelector(".inp-b1");
+    const inp2        = card.querySelector(".inp-b2");
     const statusEl    = card.querySelector(".cal-status");
     const wsContainer = card.querySelector(".cal-wf-ws");
     const zoomSlider  = card.querySelector(".cal-zoom-slider");
@@ -1191,7 +1195,7 @@ function initCalibration(data) {
     }
 
     const cv = {
-      video: videoEl, inp1, statusEl, curTime,
+      video: videoEl, inp1, inp2, statusEl, curTime,
       filename: vd.filename, wsContainer, plyrCal,
       zoomSlider, zoomDurEl,
       currentRate: 1.0,
@@ -1216,14 +1220,16 @@ function initCalibration(data) {
     // "Set Buzzer" buttons → capture video currentTime
     card.querySelectorAll(".cal-set-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        inp1.value = videoEl.currentTime.toFixed(3);
+        const t = videoEl.currentTime;
+        if (btn.dataset.which === "1") inp1.value = t.toFixed(3);
+        else                           inp2.value = t.toFixed(3);
         validateCal();
         _updateCalMarkers(cv);
       });
     });
 
     // Manual input edits → redraw markers
-    [inp1].forEach(inp => inp.addEventListener("input", () => {
+    [inp1, inp2].forEach(inp => inp.addEventListener("input", () => {
       validateCal();
       _updateCalMarkers(cv);
     }));
@@ -1284,12 +1290,13 @@ function validateCal() {
 
   for (const c of calVideos) {
     const b1 = parseFloat(c.inp1.value);
-    if (!isFinite(b1) || b1 < 0) {
-      c.statusEl.textContent = "✗ Set a sync point";
+    const b2 = parseFloat(c.inp2.value);
+    if (!isFinite(b1) || !isFinite(b2) || b2 <= b1) {
+      c.statusEl.textContent = "✗ B2 must be after B1";
       c.statusEl.className   = "cal-status warn";
       allOk = false;
     } else {
-      c.statusEl.textContent = `✓ Sync @ ${b1.toFixed(3)} s`;
+      c.statusEl.textContent = `✓ Δ = ${(b2 - b1).toFixed(3)} s`;
       c.statusEl.className   = "cal-status ok";
     }
   }
@@ -1302,7 +1309,8 @@ document.getElementById("cal-continue-btn").addEventListener("click", () => {
   // Apply calibration to pendingResult and proceed
   pendingResult.videos = pendingResult.videos.map((vd, i) => {
     const b1 = parseFloat(calVideos[i].inp1.value);
-    return { ...vd, buzz1_vid: b1, offset: pendingResult.t_buzz1_csv - b1 };
+    const b2 = parseFloat(calVideos[i].inp2.value);
+    return { ...vd, buzz1_vid: b1, buzz2_vid: b2, offset: pendingResult.t_buzz1_csv - b1 };
   });
   // Capture user-chosen delta (used as default trim window width on page 3)
   pendingResult.user_delta = parseFloat(document.getElementById("cal-delta-input").value) || pendingResult.experiment_duration;
@@ -1388,10 +1396,14 @@ function initViewer(data) {
   ch1Volts   = (data.ch1 && data.ch1.voltage) ? data.ch1.voltage : [];
   waveformBg = null;
 
-  allBuzzRel = (data.all_buzz_rel && data.all_buzz_rel.length >= 2)
+  allBuzzRel = (data.all_buzz_rel && data.all_buzz_rel.length)
     ? data.all_buzz_rel
     : [0, data.experiment_duration];
   appData._origBuzzAbs = data.t_buzz1_csv;
+
+  // CSV B2 reference = last detected buzzer (all_buzz_rel uses 0.4 s min-sep,
+  // so it catches every individual event including end-group buzzers)
+  csvB2Rel = allBuzzRel[allBuzzRel.length - 1] || data.experiment_duration;
 
   // Trim window — starts at first detected buzzer; width = user-chosen delta from page 2
   trimWindowStart = allBuzzRel[0];
@@ -1886,10 +1898,24 @@ function updateDot(masterTime) {
 }
 
 // ── Sync ───────────────────────────────────────────────────────────────────
-// Single-point sync: buzz1_vid (set on page 2) is the video timestamp that
-// aligns with CSV master t = 0.  Simple offset — no second reference needed.
-function videoToMaster(vt, vd) { return vt - vd.buzz1_vid; }
-function masterToVideo(mt, vd) { return mt + vd.buzz1_vid; }
+// Two-point sync: B1 and B2 set on page 2 anchor two known moments in the
+// video to two known moments in the CSV.
+//   video buzz1_vid  ↔  master 0             (CSV t_buzz1_csv)
+//   video buzz2_vid  ↔  master csvB2Rel      (last detected buzzer in CSV)
+// csvB2Rel = all_buzz_rel[-1] (detected with 0.4 s min-sep → catches all
+// individual buzzer events including end-group ones).
+let csvB2Rel = 0;   // set in initViewer from appData.all_buzz_rel
+
+function videoToMaster(vt, vd) {
+  const vdur = vd.buzz2_vid - vd.buzz1_vid;
+  if (!vdur || vdur <= 0 || !csvB2Rel) return vt - vd.buzz1_vid;
+  return (vt - vd.buzz1_vid) * csvB2Rel / vdur;
+}
+function masterToVideo(mt, vd) {
+  const vdur = vd.buzz2_vid - vd.buzz1_vid;
+  if (!vdur || vdur <= 0 || !csvB2Rel) return vd.buzz1_vid + mt;
+  return vd.buzz1_vid + mt * vdur / csvB2Rel;
+}
 
 function masterTime() {
   return videoToMaster(allVideos[0].currentTime, videoData[0]);

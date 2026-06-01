@@ -374,10 +374,10 @@ def process():
             "buzz2_vid": None,   # user sets this manually on page 2
         })
 
-        # Audio waveform envelope — span full CSV duration from sync point
-        ch3_full_dur = float(ch3_times[-1] - ch3_times[0])
+        # Audio waveform envelope — from before B1 to end of experiment
+        csv_post_b1 = float(ch3_times[-1] - t_buzz1_csv)   # seconds from B1 to CSV end
         wf_start = max(0.0, float(t_buzz1_vid) - 5.0)
-        wf_end   = float(t_buzz1_vid) + ch3_full_dur + 5.0
+        wf_end   = float(t_buzz1_vid) + csv_post_b1 + 5.0
         wf_data, wf_t0, wf_t1, _ = compute_waveform_envelope(audio_path, wf_start, wf_end)
         video_results[-1]["waveform"]    = wf_data
         video_results[-1]["waveform_t0"] = round(wf_t0, 4)
@@ -393,12 +393,14 @@ def process():
         t_trim = t_trim[::factor]
         v_trim = v_trim[::factor]
 
-    # experiment_duration = full CH3 recording length (independent of buzzer positions)
-    ch3_full_dur = float(ch3_times[-1] - ch3_times[0])
+    # experiment_duration = time from B1 to end of CSV recording.
+    # This makes the scrub slider span exactly 0 (B1) to end-of-CSV,
+    # so the waveform bar fills the full slider width without squeezing.
+    ch3_post_b1 = float(ch3_times[-1] - t_buzz1_csv)
 
     logger.info(
-        "CH3: %d points, full_duration=%.3f s",
-        len(t_trim), ch3_full_dur
+        "CH3: %d points, post-B1 duration=%.3f s",
+        len(t_trim), ch3_post_b1
     )
 
     # Relative buzzer times in master time (t=0 at buzz1) — for display only
@@ -416,7 +418,7 @@ def process():
             "voltage": ch1_v_norm.tolist(),
         },
         "ch1_first_peak_t":  round(ch1_first_peak_t, 4),
-        "experiment_duration": round(ch3_full_dur, 4),   # full CH3 recording length
+        "experiment_duration": round(ch3_post_b1, 4),   # seconds from B1 to end of CSV
         "t_buzz1_csv":  float(t_buzz1_csv),
         "t_buzz2_csv":  float(ch3_times[-1]),             # end of recording (default trim end)
         "all_buzz_rel": all_buzz_rel,

@@ -1453,7 +1453,9 @@ function initViewer(data) {
 
     if (window.Plyr) {
       const player = new Plyr(vid, {
-        controls: ['mute', 'volume', 'current-time', 'duration', 'fullscreen'],
+        // Omit current-time/duration — each video shows a different native
+        // timestamp (correct, but confusing). Master time is in the global slider.
+        controls: ['mute', 'volume', 'fullscreen'],
         speed:         { selected: 1, options: [0.1, 0.25, 0.5, 1, 2] },
         fullscreen:    { enabled: true, fallback: true, iosNative: false },
         storage:       { enabled: false },
@@ -1750,7 +1752,9 @@ document.addEventListener("mousemove", e => {
 
   if (trimDragging) {
     const dt = (e.clientX - trimDragStartX) / pxRange * xRange;
-    trimWindowStart = Math.max(chartXMin, Math.min(chartXMax - csvDelta, trimDragStartWindow + dt));
+    // Clamp against the FULL data range, not the visible zoom window.
+    // Using chartXMin/Max here inverts when zoomed past window width → jumping.
+    trimWindowStart = Math.max(chartXFullMin, Math.min(chartXFullMax - csvDelta, trimDragStartWindow + dt));
     appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
     appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
     updateTrimInfo();

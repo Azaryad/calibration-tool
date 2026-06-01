@@ -342,6 +342,23 @@ input[type="file"]::file-selector-button {
 }
 .frame-btn:hover { background: #1e2d45; color: #bbd4f0; }
 
+/* ── Trim-window edge nudge buttons (page 3) ─────────────── */
+.edge-btn {
+  min-width: 28px;
+  padding: 2px 8px;
+  border: 1px solid #2e4060;
+  border-radius: 4px;
+  background: #161b27;
+  color: #9fc0e0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.1;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.edge-btn:hover { background: #1e2d45; color: #e8f2ff; }
+.edge-btn:active { background: #24365a; }
+
 
 .warnings-box {
   background: #1e1600;
@@ -699,8 +716,22 @@ input[type="file"]::file-selector-button {
         <span style="font-size:0.80rem;color:#7a99b8;">CSV trim delta:</span>
         <input type="number" id="csv-delta-input" step="0.01" min="0.1"
           style="width:90px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:4px 8px;font-size:0.82rem;font-variant-numeric:tabular-nums;">
-        <span style="font-size:0.80rem;color:#8899aa;">s &nbsp;— drag window to set B1/B2 · drag outside to pan</span>
+        <span style="font-size:0.80rem;color:#8899aa;">s &nbsp;— drag window to move · drag outside to pan</span>
         <span id="trim-window-info" style="font-size:0.78rem;color:#557799;margin-left:auto;font-variant-numeric:tabular-nums;"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:0.80rem;color:#8899aa;">
+        <span>Adjust window edges:</span>
+        <span style="color:#e84040;font-weight:600;">◢ B1 start</span>
+        <button class="edge-btn" data-edge="left"  data-dir="1"  title="Lengthen on the left (start earlier)">+</button>
+        <button class="edge-btn" data-edge="left"  data-dir="-1" title="Shorten on the left (start later)">−</button>
+        <span style="width:1px;background:#1e2d45;height:16px;"></span>
+        <span style="color:#4cdf80;font-weight:600;">B2 end ◣</span>
+        <button class="edge-btn" data-edge="right" data-dir="1"  title="Lengthen on the right (end later)">+</button>
+        <button class="edge-btn" data-edge="right" data-dir="-1" title="Shorten on the right (end earlier)">−</button>
+        <label style="margin-left:8px;display:flex;align-items:center;gap:5px;">step
+          <input type="number" id="edge-step" value="0.05" min="0.001" step="0.01"
+            style="width:64px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:3px 6px;font-size:0.80rem;font-variant-numeric:tabular-nums;"> s
+        </label>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-size:0.78rem;color:#6688aa;white-space:nowrap;">🔍 Zoom</span>
@@ -1097,29 +1128,31 @@ function _updateCalMarkers(cv) {
 
   cv.wsRegions.clearRegions();
 
-  // videoT → wsT, returns null if outside visible window
+  // videoT → wsT. Zero-width region == a single thin vertical line marker,
+  // so the mark points at one precise instant (the buzzer onset), matching the
+  // precise cut lines on page 3 — not a wide box that blurs which sample is cut.
   function addMarker(videoT, color, label, draggable) {
     if (!isFinite(videoT)) return null;
     const wsT = videoT - winStart;
     if (wsT < -0.1 || wsT > winDur + 0.1) return null;
+    const t = Math.max(0, Math.min(winDur, wsT));
     return cv.wsRegions.addRegion({
-      start: Math.max(0, wsT - 0.03),
-      end:   Math.min(winDur, wsT + 0.03),
+      start: t, end: t,          // start === end → slim marker line
       color, drag: draggable, resize: false, content: label,
     });
   }
 
-  const r1 = addMarker(b1, "rgba(255,80,80,0.5)",  "B1", true);
-  const r2 = addMarker(b2, "rgba(51,238,119,0.5)", "B2", true);
-  // When dragged, convert back from window-relative to video time
-  if (r1) r1.on("update-end", () => { cv.inp1.value = (winStart + (r1.start+r1.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
-  if (r2) r2.on("update-end", () => { cv.inp2.value = (winStart + (r2.start+r2.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
+  const r1 = addMarker(b1, "#ff5050", "B1", true);
+  const r2 = addMarker(b2, "#33ee77", "B2", true);
+  // A marker has start === end, so its position is just region.start
+  if (r1) r1.on("update-end", () => { cv.inp1.value = (winStart + r1.start).toFixed(3); validateCal(); _updateCalMarkers(cv); });
+  if (r2) r2.on("update-end", () => { cv.inp2.value = (winStart + r2.start).toFixed(3); validateCal(); _updateCalMarkers(cv); });
 
-  // Orange Δ line
+  // Orange Δ guide line (expected B2 from the chosen delta)
   const refDelta = parseFloat(document.getElementById("cal-delta-input").value) || 0;
   if (refDelta > 0 && isFinite(b1)) {
     const deltaT = b1 + refDelta;
-    addMarker(deltaT, "rgba(240,160,48,0.55)", "Δ", false);
+    addMarker(deltaT, "#f0a030", "Δ", false);
     if (cv.deltaInfoEl) cv.deltaInfoEl.textContent = `Δ @ ${deltaT.toFixed(3)} s`;
   }
 }
@@ -1507,8 +1540,7 @@ function initViewer(data) {
   document.getElementById("csv-delta-input").value = csvDelta.toFixed(3);
   appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
   appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
-  document.getElementById("trim-window-info").textContent =
-    `B1: ${trimWindowStart.toFixed(2)} s  ·  B2: ${(trimWindowStart + csvDelta).toFixed(2)} s`;
+  updateTrimInfo();
 
   // Warnings
   const wc = document.getElementById("warnings-container");
@@ -1605,15 +1637,18 @@ const trimWindowPlugin = {
   beforeDraw(ch) {
     if (!appData) return;
     const { ctx, chartArea: { left, right, top, bottom }, scales: { x } } = ch;
-    const x1 = Math.max(left,  Math.min(right, x.getPixelForValue(trimWindowStart)));
-    const x2 = Math.max(left,  Math.min(right, x.getPixelForValue(trimWindowStart + csvDelta)));
+    // Pixel-snap to .5 so the 1px stroke is crisp (no anti-alias smear) — a
+    // robust, unambiguous cut line that marks the exact trim instant.
+    const snap = v => Math.round(v) + 0.5;
+    const x1 = snap(Math.max(left, Math.min(right, x.getPixelForValue(trimWindowStart))));
+    const x2 = snap(Math.max(left, Math.min(right, x.getPixelForValue(trimWindowStart + csvDelta))));
     ctx.save();
     ctx.fillStyle = "rgba(36,99,174,0.13)";
     ctx.fillRect(x1, top, x2 - x1, bottom - top);
-    ctx.lineWidth = 2; ctx.setLineDash([]);
-    ctx.strokeStyle = "#e84040";
+    ctx.lineWidth = 1; ctx.setLineDash([]);
+    ctx.strokeStyle = "#ff5050";
     ctx.beginPath(); ctx.moveTo(x1, top); ctx.lineTo(x1, bottom); ctx.stroke();
-    ctx.strokeStyle = "#4cdf80";
+    ctx.strokeStyle = "#33ee77";
     ctx.beginPath(); ctx.moveTo(x2, top); ctx.lineTo(x2, bottom); ctx.stroke();
     ctx.font = "bold 11px monospace";
     ctx.fillStyle = "#e84040";
@@ -1771,8 +1806,48 @@ function updateWaveformCursor(masterTime) {
 // ── Trim window drag + zoom + pan ──────────────────────────────────────────
 function updateTrimInfo() {
   document.getElementById("trim-window-info").textContent =
-    `B1: ${trimWindowStart.toFixed(2)} s  ·  B2: ${(trimWindowStart + csvDelta).toFixed(2)} s`;
+    `B1: ${trimWindowStart.toFixed(3)} s  ·  B2: ${(trimWindowStart + csvDelta).toFixed(3)} s  ·  Δ ${csvDelta.toFixed(3)} s`;
 }
+
+const MIN_TRIM_DELTA = 0.02;   // smallest allowed window width (s)
+
+// Push the current trimWindowStart / csvDelta to appData + UI + chart.
+// updateInput=false leaves the delta field alone (so live typing isn't clobbered).
+function applyTrimWindow(updateInput = true) {
+  if (!appData) return;
+  appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
+  appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
+  if (updateInput) {
+    const inp = document.getElementById("csv-delta-input");
+    if (inp) inp.value = csvDelta.toFixed(3);
+  }
+  updateTrimInfo();
+  if (chart) chart.update("none");
+}
+
+// Move one edge of the trim window. dir = +1 lengthen, -1 shorten.
+// Left edge moves the start; right edge moves the end. Both stay inside CSV data.
+function nudgeEdge(edge, dir) {
+  if (!appData) return;
+  const step = parseFloat(document.getElementById("edge-step").value) || 0.05;
+  let start = trimWindowStart;
+  let end   = trimWindowStart + csvDelta;
+  if (edge === "left") {
+    start = start - dir * step;                                   // +dir → earlier
+    start = Math.max(csvDataStartRel, Math.min(end - MIN_TRIM_DELTA, start));
+  } else {
+    end = end + dir * step;                                       // +dir → later
+    end = Math.min(csvDataEndRel, Math.max(start + MIN_TRIM_DELTA, end));
+  }
+  trimWindowStart = start;
+  csvDelta        = end - start;
+  applyTrimWindow();
+}
+
+document.querySelectorAll(".edge-btn").forEach(btn => {
+  btn.addEventListener("click", () =>
+    nudgeEdge(btn.dataset.edge, parseInt(btn.dataset.dir)));
+});
 
 function setChartView(lo, hi) {
   if (!chart) return;
@@ -1941,10 +2016,12 @@ document.getElementById("csv-delta-input").addEventListener("input", e => {
   csvDelta = val;
   // Re-clamp the window so [start, start+delta] stays inside the CSV data
   trimWindowStart = Math.max(csvDataStartRel, Math.min(csvDataEndRel - csvDelta, trimWindowStart));
-  appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
-  appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
-  updateTrimInfo();
-  if (chart) chart.update("none");
+  applyTrimWindow(false);   // don't rewrite the field mid-typing
+});
+// On blur/enter, normalise the field to the final clamped value
+document.getElementById("csv-delta-input").addEventListener("change", () => {
+  if (!appData) return;
+  document.getElementById("csv-delta-input").value = csvDelta.toFixed(3);
 });
 
 // ── Interpolation ──────────────────────────────────────────────────────────

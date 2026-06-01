@@ -600,23 +600,23 @@ input[type="file"]::file-selector-button {
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid #1e2d45;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:0.80rem;color:#7eb8f7;font-weight:600;white-space:nowrap;">Bandpass Filter:</span>
       <label style="font-size:0.78rem;color:#8899aa;display:flex;align-items:center;gap:5px;">
-        <input type="checkbox" id="filter-enabled" style="accent-color:#2463ae;cursor:pointer;">
+        <input type="checkbox" id="filter-enabled" checked style="accent-color:#2463ae;cursor:pointer;">
         Enable
       </label>
       <label style="font-size:0.78rem;color:#8899aa;display:flex;align-items:center;gap:4px;">
         Low&nbsp;
-        <input type="number" id="filter-lowcut" value="1400" min="100" max="7900" step="50"
+        <input type="number" id="filter-lowcut" value="1000" min="100" max="7900" step="50"
           style="width:70px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:3px 6px;font-size:0.80rem;">
         &nbsp;Hz
       </label>
       <span style="color:#445566;font-size:0.80rem;">–</span>
       <label style="font-size:0.78rem;color:#8899aa;display:flex;align-items:center;gap:4px;">
         High&nbsp;
-        <input type="number" id="filter-highcut" value="1600" min="200" max="8000" step="50"
+        <input type="number" id="filter-highcut" value="1117" min="200" max="8000" step="50"
           style="width:70px;background:#0e1624;border:1px solid #1e3a5f;border-radius:4px;color:#dde3ee;padding:3px 6px;font-size:0.80rem;">
         &nbsp;Hz
       </label>
-      <span id="filter-status" style="font-size:0.76rem;color:#445566;">Off — waveform shows full spectrum</span>
+      <span id="filter-status" style="font-size:0.76rem;color:#4cdf80;">Active: 1000–1117 Hz (buzzer band isolated)</span>
     </div>
   </div>
 
@@ -1143,6 +1143,17 @@ function initCalibration(data) {
         </label>
         <span id="delta-line-info-${idx}" style="font-size:0.75rem;color:#f0a030;margin-left:6px;"></span>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <span style="font-size:0.76rem;color:#6688aa;white-space:nowrap;">Speed:</span>
+        <button class="speed-btn cal-speed-btn active" data-rate="1">1×</button>
+        <button class="speed-btn cal-speed-btn" data-rate="0.5">0.5×</button>
+        <button class="speed-btn cal-speed-btn" data-rate="0.25">0.25×</button>
+        <button class="speed-btn cal-speed-btn" data-rate="0.1">0.1×</button>
+        <button class="speed-btn cal-speed-btn" data-rate="2">2×</button>
+        <span style="width:1px;background:#1e2d45;height:16px;align-self:center;"></span>
+        <button class="frame-btn cal-frame-back" title="Step back 1 frame">◀ Frame</button>
+        <button class="frame-btn cal-frame-fwd"  title="Step forward 1 frame">Frame ▶</button>
+      </div>
       <div class="cal-wf-ws"></div>
       <div style="font-size:0.72rem;color:#334455;margin-top:3px;text-align:right;">
         Scroll to zoom · click to seek · drag markers to adjust buzzer times
@@ -1164,6 +1175,7 @@ function initCalibration(data) {
     if (window.Plyr) {
       plyrCal = new Plyr(videoEl, {
         controls: ['play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'fullscreen'],
+        speed:        { selected: 1, options: [0.1, 0.25, 0.5, 1, 2] },
         fullscreen:   { enabled: true, fallback: true, iosNative: false },
         storage:      { enabled: false },
         keyboard:     { focused: true, global: false },
@@ -1213,6 +1225,25 @@ function initCalibration(data) {
       validateCal();
       _updateCalMarkers(cv);
     }));
+
+    // Per-card speed buttons
+    card.querySelectorAll(".cal-speed-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const rate = parseFloat(btn.dataset.rate);
+        card.querySelectorAll(".cal-speed-btn").forEach(b =>
+          b.classList.toggle("active", b === btn));
+        if (cv.plyrCal) { try { cv.plyrCal.speed = rate; } catch(_) { videoEl.playbackRate = rate; } }
+        else videoEl.playbackRate = rate;
+      });
+    });
+
+    // Per-card frame step (≈30 fps)
+    card.querySelector(".cal-frame-back").addEventListener("click", () => {
+      videoEl.currentTime = Math.max(0, videoEl.currentTime - 1/30);
+    });
+    card.querySelector(".cal-frame-fwd").addEventListener("click", () => {
+      videoEl.currentTime = Math.min(videoEl.duration || 1e9, videoEl.currentTime + 1/30);
+    });
 
     // Kick off WaveSurfer initialisation asynchronously
     initCalVideoWaveSurfer(cv);
@@ -1436,9 +1467,8 @@ function initViewer(data) {
 
     if (window.Plyr) {
       const player = new Plyr(vid, {
-        // Show per-video: volume, mute, current-time (ms accurate), fullscreen only.
-        // Global play/pause is driven by our shared play-pause-btn + speed row.
         controls: ['mute', 'volume', 'current-time', 'duration', 'fullscreen'],
+        speed:         { selected: 1, options: [0.1, 0.25, 0.5, 1, 2] },
         fullscreen:    { enabled: true, fallback: true, iosNative: false },
         storage:       { enabled: false },
         keyboard:      { focused: false, global: false },

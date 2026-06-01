@@ -1030,41 +1030,32 @@ function _updateCalMarkers(cv) {
 
   const dur = cv.wfTotalDur || 1;
   const b1  = parseFloat(cv.inp1.value);
-  const b2  = parseFloat(cv.inp2.value);
 
   cv.wsRegions.clearRegions();
 
   function addMarker(t, color, label, draggable) {
     if (!isFinite(t) || t < 0 || t > dur) return null;
-    const r = cv.wsRegions.addRegion({
+    return cv.wsRegions.addRegion({
       start: Math.max(0, t - 0.03),
       end:   Math.min(dur, t + 0.03),
-      color,
-      drag:   draggable,
-      resize: false,
-      content: label,
+      color, drag: draggable, resize: false, content: label,
     });
-    return r;
   }
 
-  const r1 = addMarker(b1, "rgba(255,80,80,0.45)",  "B1", true);
-  const r2 = addMarker(b2, "rgba(51,238,119,0.45)", "B2", true);
+  // Sync-point marker (draggable)
+  const r1 = addMarker(b1, "rgba(255,80,80,0.5)", "Sync", true);
+  if (r1) r1.on("update-end", () => {
+    cv.inp1.value = ((r1.start + r1.end) / 2).toFixed(3);
+    validateCal();
+    _updateCalMarkers(cv);
+  });
 
-  // Dragging B1/B2 regions updates the input fields
-  if (r1) r1.on("update-end", () => { cv.inp1.value = ((r1.start+r1.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
-  if (r2) r2.on("update-end", () => { cv.inp2.value = ((r2.start+r2.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
-
-  // Delta prediction line (orange)
+  // Delta preview line — shows where the experiment end would fall
   const refDelta = parseFloat(document.getElementById("cal-delta-input").value) || 0;
-  if (refDelta > 0) {
-    let anchorVal = "b1";
-    if (cv.anchorRadios) for (const r of cv.anchorRadios) if (r.checked) { anchorVal = r.value; break; }
-    const anchorT = anchorVal === "b1" ? b1 : b2;
-    if (isFinite(anchorT)) {
-      const deltaT = anchorVal === "b1" ? anchorT + refDelta : anchorT - refDelta;
-      addMarker(deltaT, "rgba(240,160,48,0.55)", "Δ", false);
-      if (cv.deltaInfoEl) cv.deltaInfoEl.textContent = `Δ @ ${deltaT.toFixed(3)} s`;
-    }
+  if (refDelta > 0 && isFinite(b1)) {
+    const deltaT = b1 + refDelta;
+    addMarker(deltaT, "rgba(240,160,48,0.55)", "Δ end", false);
+    if (cv.deltaInfoEl) cv.deltaInfoEl.textContent = `Δ end @ ${deltaT.toFixed(3)} s`;
   }
 }
 
@@ -1150,21 +1141,10 @@ function initCalibration(data) {
       <video src="/video/${sessionId}/${encodeURIComponent(vd.filename)}" preload="auto" playsinline></video>
       <div class="cal-row">
         <span>Current: <span class="cur-time">0.00 s</span></span>
-        <button class="cal-set-btn" data-which="1">Set Buzzer 1</button>
-        <label>Buzzer 1: <input type="number" step="0.01" min="0" class="cal-input inp-b1" value="${(vd.buzz1_vid ?? 0).toFixed(2)}"> s</label>
-        <button class="cal-set-btn" data-which="2">Set Buzzer 2</button>
-        <label>Buzzer 2: <input type="number" step="0.01" min="0" class="cal-input inp-b2" value="${vd.buzz2_vid != null ? vd.buzz2_vid.toFixed(2) : ''}"> s</label>
+        <button class="cal-set-btn" data-which="1">Set Sync Point</button>
+        <label>Sync point: <input type="number" step="0.001" min="0" class="cal-input inp-b1" value="${(vd.buzz1_vid ?? 0).toFixed(3)}"> s</label>
         <span class="cal-status"></span>
-      </div>
-      <div style="margin-top:8px;display:flex;align-items:center;gap:10px;font-size:0.80rem;color:#8899aa;">
-        <span>Anchor for page 3:</span>
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-          <input type="radio" name="anchor-${idx}" value="b1" checked style="accent-color:#e84040;cursor:pointer;"> <span style="color:#e84040;">B1</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
-          <input type="radio" name="anchor-${idx}" value="b2" style="accent-color:#4cdf80;cursor:pointer;"> <span style="color:#4cdf80;">B2</span>
-        </label>
-        <span id="delta-line-info-${idx}" style="font-size:0.75rem;color:#f0a030;margin-left:6px;"></span>
+        <span id="delta-line-info-${idx}" style="font-size:0.75rem;color:#f0a030;"></span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">
         <span style="font-size:0.76rem;color:#6688aa;white-space:nowrap;">Speed:</span>
@@ -1186,16 +1166,14 @@ function initCalibration(data) {
     `;
     list.appendChild(card);
 
-    const videoEl      = card.querySelector("video");
-    const curTime      = card.querySelector(".cur-time");
-    const inp1         = card.querySelector(".inp-b1");
-    const inp2         = card.querySelector(".inp-b2");
-    const statusEl     = card.querySelector(".cal-status");
-    const wsContainer  = card.querySelector(".cal-wf-ws");
-    const zoomSlider   = card.querySelector(".cal-zoom-slider");
-    const zoomDurEl    = card.querySelector(".cal-zoom-dur");
-    const anchorRadios = card.querySelectorAll(`input[name="anchor-${idx}"]`);
-    const deltaInfoEl  = card.querySelector(`#delta-line-info-${idx}`);
+    const videoEl     = card.querySelector("video");
+    const curTime     = card.querySelector(".cur-time");
+    const inp1        = card.querySelector(".inp-b1");
+    const statusEl    = card.querySelector(".cal-status");
+    const wsContainer = card.querySelector(".cal-wf-ws");
+    const zoomSlider  = card.querySelector(".cal-zoom-slider");
+    const zoomDurEl   = card.querySelector(".cal-zoom-dur");
+    const deltaInfoEl = card.querySelector(`#delta-line-info-${idx}`);
 
     // Wrap video with Plyr — full controls (play, seek, volume, fullscreen)
     let plyrCal = null;
@@ -1213,19 +1191,16 @@ function initCalibration(data) {
     }
 
     const cv = {
-      video: videoEl, inp1, inp2, statusEl, curTime,
+      video: videoEl, inp1, statusEl, curTime,
       filename: vd.filename, wsContainer, plyrCal,
       zoomSlider, zoomDurEl,
-      currentRate: 1.0,   // persisted speed — restored after every seek/play
+      currentRate: 1.0,
       wsInstance: null, wsRegions: null,
       wfCanvas: null,
       wfTotalDur: null, wfBins: null, wfFetchT0: 0, wfFetchT1: 0,
-      anchorRadios, deltaInfoEl,
+      deltaInfoEl,
     };
     calVideos.push(cv);
-
-    // Anchor radio change → redraw markers
-    anchorRadios.forEach(r => r.addEventListener("change", () => _updateCalMarkers(cv)));
 
     // Video timeupdate → sync WaveSurfer cursor
     videoEl.addEventListener("timeupdate", () => {
@@ -1308,45 +1283,20 @@ function initCalibration(data) {
 
 function validateCal() {
   let allOk = true;
-  const expected = pendingResult ? pendingResult.experiment_duration : null;
-  const validDeltas = [];
 
   for (const c of calVideos) {
     const b1 = parseFloat(c.inp1.value);
-    const b2 = parseFloat(c.inp2.value);
-    if (!isFinite(b1) || !isFinite(b2) || b2 <= b1) {
-      c.statusEl.textContent = "✗ Buzzer 2 must be after Buzzer 1";
-      c.statusEl.className = "cal-status warn";
+    if (!isFinite(b1) || b1 < 0) {
+      c.statusEl.textContent = "✗ Set a sync point";
+      c.statusEl.className   = "cal-status warn";
       allOk = false;
-      continue;
-    }
-    const dur = b2 - b1;
-    validDeltas.push({ name: c.filename.split(/[\\/]/).pop(), delta: dur });
-    if (expected !== null && Math.abs(dur - expected) > 1.5) {
-      c.statusEl.textContent = `⚠ Δ = ${dur.toFixed(2)} s (CSV is ${expected.toFixed(2)} s)`;
-      c.statusEl.className = "cal-status warn";
     } else {
-      c.statusEl.textContent = `✓ Δ = ${dur.toFixed(2)} s`;
-      c.statusEl.className = "cal-status ok";
+      c.statusEl.textContent = `✓ Sync @ ${b1.toFixed(3)} s`;
+      c.statusEl.className   = "cal-status ok";
     }
   }
 
-  // Delta consistency warning across videos
-  const warnEl = document.getElementById("cal-delta-warning");
-  if (validDeltas.length >= 2) {
-    const minD = Math.min(...validDeltas.map(d => d.delta));
-    const maxD = Math.max(...validDeltas.map(d => d.delta));
-    if (maxD - minD > 0.5) {
-      const details = validDeltas.map(d => `${d.name}: ${d.delta.toFixed(2)} s`).join("  ·  ");
-      warnEl.style.display = "block";
-      warnEl.innerHTML = `⚠ Video trim deltas differ by ${(maxD - minD).toFixed(2)} s — check calibration:  ${details}`;
-    } else {
-      warnEl.style.display = "none";
-    }
-  } else {
-    warnEl.style.display = "none";
-  }
-
+  document.getElementById("cal-delta-warning").style.display = "none";
   document.getElementById("cal-continue-btn").disabled = !allOk;
 }
 
@@ -1354,18 +1304,10 @@ document.getElementById("cal-continue-btn").addEventListener("click", () => {
   // Apply calibration to pendingResult and proceed
   pendingResult.videos = pendingResult.videos.map((vd, i) => {
     const b1 = parseFloat(calVideos[i].inp1.value);
-    const b2 = parseFloat(calVideos[i].inp2.value);
-    return { ...vd, buzz1_vid: b1, buzz2_vid: b2, offset: pendingResult.t_buzz1_csv - b1 };
+    return { ...vd, buzz1_vid: b1, offset: pendingResult.t_buzz1_csv - b1 };
   });
-  // Capture user-chosen delta
+  // Capture user-chosen delta (used as default trim window width on page 3)
   pendingResult.user_delta = parseFloat(document.getElementById("cal-delta-input").value) || pendingResult.experiment_duration;
-
-  // Capture per-video anchor choices
-  calVideoAnchors = calVideos.map(cv => {
-    if (!cv.anchorRadios) return "b1";
-    for (const r of cv.anchorRadios) { if (r.checked) return r.value; }
-    return "b1";
-  });
   // Pause/clear cal videos to free decoders
   calVideos.forEach(c => { if (c.plyrCal) { try { c.plyrCal.destroy(); } catch(_) {} } c.video.pause(); c.video.removeAttribute("src"); c.video.load(); });
   calVideos = [];
@@ -1390,22 +1332,6 @@ const finishBtn = document.getElementById("finish-btn");
 finishBtn.addEventListener("click", async () => {
   if (!appData || !sessionId) return;
 
-  // Pre-export: warn if CSV trim delta differs from any video trim delta by >100 ms
-  const mismatch = videoData.filter(vd => {
-    const vidDelta = vd.buzz2_vid - vd.buzz1_vid;
-    return Math.abs(csvDelta - vidDelta) > 0.1;
-  });
-  if (mismatch.length > 0) {
-    const lines = mismatch.map(vd => {
-      const vd2 = vd.buzz2_vid - vd.buzz1_vid;
-      return `• ${vd.filename.split(/[\\/]/).pop()}: video Δ = ${vd2.toFixed(3)} s, CSV Δ = ${csvDelta.toFixed(3)} s (diff = ${Math.abs(csvDelta - vd2).toFixed(3)} s)`;
-    }).join("\n");
-    const ok = confirm(
-      `CSV trim duration (${csvDelta.toFixed(3)} s) differs from video trim duration by more than 100 ms:\n\n${lines}\n\nProceed with export anyway?`
-    );
-    if (!ok) return;
-  }
-
   const original = finishBtn.innerHTML;
   finishBtn.disabled = true;
   finishBtn.innerHTML = '<span class="spinner" style="border-color:#fff;border-top-color:transparent;width:13px;height:13px;"></span> Trimming…';
@@ -1420,10 +1346,11 @@ finishBtn.addEventListener("click", async () => {
         ch3_file: appData.ch3_file,
         t_buzz1_csv: appData.t_buzz1_csv,
         t_buzz2_csv: appData.t_buzz2_csv,
+        // vid_start / vid_end = user's page-3 trim window mapped to video time
         videos: videoData.map(v => ({
-          filename: v.filename,
-          buzz1_vid: v.buzz1_vid,
-          buzz2_vid: v.buzz2_vid,
+          filename:  v.filename,
+          vid_start: masterToVideo(trimWindowStart,            v),
+          vid_end:   masterToVideo(trimWindowStart + csvDelta, v),
         })),
       }),
     });
@@ -1595,8 +1522,8 @@ function buildChart() {
   // ch3Times / ch1Times are already re-zeroed relative to B1 (server does t - t_buzz1_csv)
   const initV = interp(0);
 
-  chartXFullMin = (allBuzzRel.length ? allBuzzRel[0] : 0) - 5;
-  chartXFullMax = (allBuzzRel.length ? allBuzzRel[allBuzzRel.length - 1] : appData.experiment_duration) + 5;
+  chartXFullMin = -5;
+  chartXFullMax = appData.experiment_duration + 5;
   chartXMin = chartXFullMin;
   chartXMax = chartXFullMax;
 
@@ -1961,23 +1888,10 @@ function updateDot(masterTime) {
 }
 
 // ── Sync ───────────────────────────────────────────────────────────────────
-// Linear time-mapping between video time and master (graph X) time, anchored
-// at BOTH buzzer events:
-//   video buzz1_vid  ↔  master 0                        (CSV t_buzz1_csv)
-//   video buzz2_vid  ↔  master appData.experiment_duration (CSV t_buzz2_csv)
-// This guarantees the dot and video are aligned at both endpoints even if the
-// user-marked video duration differs slightly from the CSV duration.
-function videoToMaster(vt, vd) {
-  const vdur = vd.buzz2_vid - vd.buzz1_vid;
-  if (vdur <= 0) return vt - vd.buzz1_vid;
-  return (vt - vd.buzz1_vid) * appData.experiment_duration / vdur;
-}
-
-function masterToVideo(mt, vd) {
-  const vdur = vd.buzz2_vid - vd.buzz1_vid;
-  if (appData.experiment_duration <= 0) return vd.buzz1_vid + mt;
-  return vd.buzz1_vid + mt * vdur / appData.experiment_duration;
-}
+// Single-point sync: buzz1_vid (set on page 2) is the video timestamp that
+// aligns with CSV master t = 0.  Simple offset — no second reference needed.
+function videoToMaster(vt, vd) { return vt - vd.buzz1_vid; }
+function masterToVideo(mt, vd) { return mt + vd.buzz1_vid; }
 
 function masterTime() {
   return videoToMaster(allVideos[0].currentTime, videoData[0]);

@@ -302,11 +302,13 @@ def process():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
+    # t_buzz2_csv is detected but NOT used to define experiment duration —
+    # the full CH3 recording length is used instead.  t_buzz2_csv is only
+    # kept for all_buzz_rel metadata and for the default CSV trim end.
     if t_buzz2_csv is None:
-        warnings.append("Only one buzzer event found in CH1 — using end of signal as second event.")
         t_buzz2_csv = float(ch1_times[-1])
 
-    logger.info("CSV buzzer events: t1=%.3f s, t2=%.3f s", t_buzz1_csv, t_buzz2_csv)
+    logger.info("CSV first buzzer: t1=%.3f s", t_buzz1_csv)
 
     # --- Normalised CH1 for graph overlay (full recording, re-zeroed at buzz1) ---
     ch1_t_norm = ch1_times - t_buzz1_csv
@@ -358,33 +360,23 @@ def process():
             )
             offset = 0.0
             t_buzz1_vid = 0.0
-            t_buzz2_vid = None
         else:
             offset = t_buzz1_csv - t_buzz1_vid
-            if t_buzz2_vid is not None:
-                expected = t_buzz2_vid + offset
-                diff = abs(expected - t_buzz2_csv)
-                if diff > 0.5:
-                    warnings.append(
-                        f"Calibration mismatch in '{vf}': 2nd buzzer expected at "
-                        f"{t_buzz2_csv:.2f} s but got {expected:.2f} s "
-                        f"(diff {diff:.2f} s > 0.5 s tolerance)."
-                    )
 
         logger.info(
             "Video '%s': buzz1_vid=%.3f s, offset=%.3f s",
-            vf, t_buzz1_vid if t_buzz1_vid else 0, offset
+            vf, t_buzz1_vid, offset
         )
         video_results.append({
             "filename": vf,
-            "offset": round(float(offset), 4),
+            "offset":    round(float(offset), 4),
             "buzz1_vid": round(float(t_buzz1_vid), 4),
-            "buzz2_vid": round(float(t_buzz2_vid), 4) if t_buzz2_vid is not None else None,
         })
 
-        # Audio waveform envelope for the video scrub bar overlay
-        wf_start = max(0.0, (t_buzz1_vid or 0.0) - 5.0)
-        wf_end = (t_buzz2_vid or (wf_start + 120.0)) + 5.0
+        # Audio waveform envelope — span full CSV duration from sync point
+        ch3_full_dur = float(ch3_times[-1] - ch3_times[0])
+        wf_start = max(0.0, float(t_buzz1_vid) - 5.0)
+        wf_end   = float(t_buzz1_vid) + ch3_full_dur + 5.0
         wf_data, wf_t0, wf_t1, _ = compute_waveform_envelope(audio_path, wf_start, wf_end)
         video_results[-1]["waveform"]    = wf_data
         video_results[-1]["waveform_t0"] = round(wf_t0, 4)
@@ -400,15 +392,16 @@ def process():
         t_trim = t_trim[::factor]
         v_trim = v_trim[::factor]
 
+    # experiment_duration = full CH3 recording length (independent of buzzer positions)
+    ch3_full_dur = float(ch3_times[-1] - ch3_times[0])
+
     logger.info(
-        "CH3 trimmed to %d points, experiment_duration=%.3f s",
-        len(t_trim), t_buzz2_csv - t_buzz1_csv
+        "CH3: %d points, full_duration=%.3f s",
+        len(t_trim), ch3_full_dur
     )
 
-    # Relative buzzer times in master time (t=0 at buzz1)
-    t_buzz2_rel = round(float(t_buzz2_csv - t_buzz1_csv), 4) if t_buzz2_csv is not None else None
-    t_buzz3_rel = round(float(t_buzz3_csv - t_buzz1_csv), 4) if t_buzz3_csv is not None else None
-    all_buzz_rel = [round(float(t - t_buzz1_csv), 4) for t in all_buzz_times] if all_buzz_times else [0, t_buzz2_rel]
+    # Relative buzzer times in master time (t=0 at buzz1) — for display only
+    all_buzz_rel = [round(float(t - t_buzz1_csv), 4) for t in all_buzz_times] if all_buzz_times else [0.0]
 
     return jsonify({
         "session_id": session_id,
@@ -421,13 +414,10 @@ def process():
             "time": ch1_t_norm.tolist(),
             "voltage": ch1_v_norm.tolist(),
         },
-        "ch1_first_peak_t": round(ch1_first_peak_t, 4),
-        "experiment_duration": round(float(t_buzz2_csv - t_buzz1_csv), 4),
-        "t_buzz1_csv": float(t_buzz1_csv),
-        "t_buzz2_csv": float(t_buzz2_csv),
-        "t_buzz3_csv": float(t_buzz3_csv) if t_buzz3_csv is not None else None,
-        "t_buzz2_rel": t_buzz2_rel,
-        "t_buzz3_rel": t_buzz3_rel,
+        "ch1_first_peak_t":  round(ch1_first_peak_t, 4),
+        "experiment_duration": round(ch3_full_dur, 4),   # full CH3 recording length
+        "t_buzz1_csv":  float(t_buzz1_csv),
+        "t_buzz2_csv":  float(ch3_times[-1]),             # end of recording (default trim end)
         "all_buzz_rel": all_buzz_rel,
         "ch1_file": ch1_file,
         "ch3_file": ch3_file,
@@ -542,12 +532,14 @@ def export():
     output_files = []
 
     # --- Trim videos with ffmpeg ---
+    # vid_start / vid_end are the master-time trim window mapped back to video time
+    # (computed in the frontend as: masterToVideo(trimStart/End, videoData[i]))
     for vid in videos:
         fname = vid.get("filename")
-        b1 = float(vid.get("buzz1_vid"))
-        b2 = float(vid.get("buzz2_vid"))
+        b1 = float(vid.get("vid_start", vid.get("buzz1_vid", 0)))
+        b2 = float(vid.get("vid_end",   vid.get("buzz2_vid", b1 + 1)))
         if b2 <= b1:
-            return jsonify({"error": f"Invalid trim window for '{fname}': buzz2 ({b2}) must be > buzz1 ({b1})."}), 400
+            return jsonify({"error": f"Invalid trim window for '{fname}': end ({b2:.3f}s) must be > start ({b1:.3f}s)."}), 400
 
         in_path = os.path.join(session_dir, fname)
         if not os.path.isfile(in_path):

@@ -1016,9 +1016,9 @@ function _drawCanvasFallback(cv) {
       }
     }
   }
-  const b1 = parseFloat(cv.inp1.value), b2 = parseFloat(cv.inp2.value);
+  const b1 = parseFloat(cv.inp1.value);
   const dur = cv.wfTotalDur || 1;
-  if (isFinite(b1)) { const x = Math.round(b1 / dur * W); ctx.strokeStyle = "#ff5555"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); ctx.fillStyle="#ff5555"; ctx.font="bold 10px monospace"; ctx.fillText("B1",Math.min(x+3,W-18),13); }
+  if (isFinite(b1)) { const x = Math.round(b1 / dur * W); ctx.strokeStyle = "#ff5555"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); ctx.fillStyle="#ff5555"; ctx.font="bold 10px monospace"; ctx.fillText("Sync",Math.min(x+3,W-30),13); }
   if (isFinite(b2)) { const x = Math.round(b2 / dur * W); ctx.strokeStyle = "#33ee77"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); ctx.fillStyle="#33ee77"; ctx.font="bold 10px monospace"; ctx.fillText("B2",Math.min(x+3,W-18),13); }
   const ct = cv.video.currentTime;
   const cx = Math.round(ct / dur * W);
@@ -1216,16 +1216,14 @@ function initCalibration(data) {
     // "Set Buzzer" buttons → capture video currentTime
     card.querySelectorAll(".cal-set-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        const t = videoEl.currentTime;
-        if (btn.dataset.which === "1") inp1.value = t.toFixed(3);
-        else                           inp2.value = t.toFixed(3);
+        inp1.value = videoEl.currentTime.toFixed(3);
         validateCal();
         _updateCalMarkers(cv);
       });
     });
 
     // Manual input edits → redraw markers
-    [inp1, inp2].forEach(inp => inp.addEventListener("input", () => {
+    [inp1].forEach(inp => inp.addEventListener("input", () => {
       validateCal();
       _updateCalMarkers(cv);
     }));

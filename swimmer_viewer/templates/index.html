@@ -278,6 +278,29 @@ input[type="file"]::file-selector-button {
 .cal-wf-ws ::-webkit-scrollbar-track { background: #07101e; }
 .cal-wf-ws ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 2px; }
 
+/* Zoom slider row below the WaveSurfer waveform */
+.cal-wf-zoom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 0.80rem;
+  color: #7a99b8;
+}
+.cal-wf-zoom input[type=range] {
+  flex: 1;
+  accent-color: #4a8aba;
+  height: 4px;
+  cursor: pointer;
+}
+.cal-zoom-dur {
+  min-width: 66px;
+  text-align: right;
+  color: #7eb8f7;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.80rem;
+}
+
 /* Canvas fallback (used when WaveSurfer fails to load) */
 .cal-wf-canvas-fallback {
   width: 100%;
@@ -1155,8 +1178,10 @@ function initCalibration(data) {
         <button class="frame-btn cal-frame-fwd"  title="Step forward 1 frame">Frame ▶</button>
       </div>
       <div class="cal-wf-ws"></div>
-      <div style="font-size:0.72rem;color:#334455;margin-top:3px;text-align:right;">
-        Scroll to zoom · click to seek · drag markers to adjust buzzer times
+      <div class="cal-wf-zoom">
+        <span>Zoom</span>
+        <input type="range" class="cal-zoom-slider" min="0" max="1000" value="0">
+        <span class="cal-zoom-dur">full</span>
       </div>
     `;
     list.appendChild(card);
@@ -1167,6 +1192,8 @@ function initCalibration(data) {
     const inp2         = card.querySelector(".inp-b2");
     const statusEl     = card.querySelector(".cal-status");
     const wsContainer  = card.querySelector(".cal-wf-ws");
+    const zoomSlider   = card.querySelector(".cal-zoom-slider");
+    const zoomDurEl    = card.querySelector(".cal-zoom-dur");
     const anchorRadios = card.querySelectorAll(`input[name="anchor-${idx}"]`);
     const deltaInfoEl  = card.querySelector(`#delta-line-info-${idx}`);
 
@@ -1188,12 +1215,19 @@ function initCalibration(data) {
     const cv = {
       video: videoEl, inp1, inp2, statusEl, curTime,
       filename: vd.filename, wsContainer, plyrCal,
+      zoomSlider, zoomDurEl,
+      currentRate: 1.0,   // persisted speed — restored after every seek/play
       wsInstance: null, wsRegions: null,
       wfCanvas: null,
       wfTotalDur: null, wfBins: null, wfFetchT0: 0, wfFetchT1: 0,
       anchorRadios, deltaInfoEl,
     };
     calVideos.push(cv);
+
+    // Restore playback rate after every play event (Plyr resets rate on seek+resume)
+    videoEl.addEventListener("play", () => {
+      if (videoEl.playbackRate !== cv.currentRate) videoEl.playbackRate = cv.currentRate;
+    });
 
     // Anchor radio change → redraw markers
     anchorRadios.forEach(r => r.addEventListener("change", () => _updateCalMarkers(cv)));
@@ -1226,14 +1260,14 @@ function initCalibration(data) {
       _updateCalMarkers(cv);
     }));
 
-    // Per-card speed buttons
+    // Per-card speed buttons — store rate so "play" listener can restore it
     card.querySelectorAll(".cal-speed-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        const rate = parseFloat(btn.dataset.rate);
+        cv.currentRate = parseFloat(btn.dataset.rate);
         card.querySelectorAll(".cal-speed-btn").forEach(b =>
           b.classList.toggle("active", b === btn));
-        if (cv.plyrCal) { try { cv.plyrCal.speed = rate; } catch(_) { videoEl.playbackRate = rate; } }
-        else videoEl.playbackRate = rate;
+        videoEl.playbackRate = cv.currentRate;
+        if (cv.plyrCal) { try { cv.plyrCal.speed = cv.currentRate; } catch(_) {} }
       });
     });
 
@@ -1243,6 +1277,26 @@ function initCalibration(data) {
     });
     card.querySelector(".cal-frame-fwd").addEventListener("click", () => {
       videoEl.currentTime = Math.min(videoEl.duration || 1e9, videoEl.currentTime + 1/30);
+    });
+
+    // Zoom slider → WaveSurfer zoom (same exponential scale as old canvas zoom)
+    zoomSlider.addEventListener("input", () => {
+      if (!cv.wsInstance || !cv.wfTotalDur) return;
+      const val    = parseInt(zoomSlider.value);
+      const maxDur = cv.wfTotalDur;
+      let viewDur;
+      if (val === 0) {
+        viewDur = maxDur;
+        zoomDurEl.textContent = "full";
+      } else {
+        // Exponential: val=1000 → ~60 ms window, val=0 → full duration
+        viewDur = maxDur * Math.pow((1 / 60) / maxDur, val / 1000);
+        zoomDurEl.textContent = viewDur >= 1
+          ? viewDur.toFixed(2) + " s"
+          : (viewDur * 1000).toFixed(1) + " ms";
+      }
+      const containerW = wsContainer.offsetWidth || 800;
+      cv.wsInstance.zoom(containerW / viewDur);
     });
 
     // Kick off WaveSurfer initialisation asynchronously
@@ -1495,6 +1549,10 @@ function initViewer(data) {
   // Events
   allVideos[0].addEventListener("timeupdate", onTimeUpdate);
   allVideos.forEach(v => {
+    // Restore chosen playback rate after every seek/resume — Plyr resets it to 1 on seek
+    v.addEventListener("play", () => {
+      if (v.playbackRate !== playbackRate) v.playbackRate = playbackRate;
+    });
     v.addEventListener("ended", () => {
       isPlaying = false;
       playPauseBtn.textContent = "▶ Play";

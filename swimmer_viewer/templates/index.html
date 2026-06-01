@@ -739,6 +739,8 @@ let calVideoAnchors = []; // "b1" or "b2" per video from calibration page
 let playbackRate    = 1.0; // viewer playback speed (affects all synchronized videos)
 let trimWindowStart = 0;  // left edge of draggable trim window (in allBuzzRel space)
 let csvDelta        = 0;  // CSV trim window width (seconds)
+let csvDataStartRel = 0;  // earliest master time with CSV data (≤ 0)
+let csvDataEndRel   = 0;  // latest   master time with CSV data (= experiment_duration)
 let trimDragging    = false;
 let trimDragStartX  = 0;
 let trimDragStartWindow = 0;
@@ -1489,9 +1491,19 @@ function initViewer(data) {
   // so it catches every individual event including end-group buzzers)
   csvB2Rel = allBuzzRel[allBuzzRel.length - 1] || data.experiment_duration;
 
+  // Real CSV data bounds in master time — the trim window must stay inside these
+  // or the exported CSV will be short (no samples exist past the data end).
+  csvDataStartRel = (typeof data.csv_start_rel === "number") ? data.csv_start_rel : 0;
+  csvDataEndRel   = data.experiment_duration;
+  const csvSpan   = csvDataEndRel - csvDataStartRel;
+
   // Trim window — starts at first detected buzzer; width = user-chosen delta from page 2
   trimWindowStart = allBuzzRel[0];
   csvDelta = data.user_delta || data.experiment_duration;
+  // Cap delta to the total CSV span — can't export more CSV than exists
+  if (csvDelta > csvSpan) csvDelta = csvSpan;
+  // Clamp the window so [start, start+delta] sits entirely within the CSV data
+  trimWindowStart = Math.max(csvDataStartRel, Math.min(csvDataEndRel - csvDelta, trimWindowStart));
   document.getElementById("csv-delta-input").value = csvDelta.toFixed(3);
   appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
   appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
@@ -1836,9 +1848,10 @@ document.addEventListener("mousemove", e => {
 
   if (trimDragging) {
     const dt = (e.clientX - trimDragStartX) / pxRange * xRange;
-    // Clamp against the FULL data range, not the visible zoom window.
-    // Using chartXMin/Max here inverts when zoomed past window width → jumping.
-    trimWindowStart = Math.max(chartXFullMin, Math.min(chartXFullMax - csvDelta, trimDragStartWindow + dt));
+    // Clamp to the REAL CSV data bounds (not the padded chart range) so the
+    // window can never sit over empty space where no CSV samples exist —
+    // otherwise the exported CSV comes out shorter than the (longer) video.
+    trimWindowStart = Math.max(csvDataStartRel, Math.min(csvDataEndRel - csvDelta, trimDragStartWindow + dt));
     appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
     appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
     updateTrimInfo();
@@ -1920,9 +1933,14 @@ document.getElementById("chart-zoom-reset").addEventListener("click", () => {
 
 // ── CSV delta input ────────────────────────────────────────────────────────
 document.getElementById("csv-delta-input").addEventListener("input", e => {
-  const val = parseFloat(e.target.value);
+  let val = parseFloat(e.target.value);
   if (!appData || !isFinite(val) || val <= 0) return;
+  // Cap to the total CSV span — can't trim more CSV than the recording contains
+  const csvSpan = csvDataEndRel - csvDataStartRel;
+  if (val > csvSpan) val = csvSpan;
   csvDelta = val;
+  // Re-clamp the window so [start, start+delta] stays inside the CSV data
+  trimWindowStart = Math.max(csvDataStartRel, Math.min(csvDataEndRel - csvDelta, trimWindowStart));
   appData.t_buzz1_csv = appData._origBuzzAbs + trimWindowStart;
   appData.t_buzz2_csv = appData._origBuzzAbs + trimWindowStart + csvDelta;
   updateTrimInfo();

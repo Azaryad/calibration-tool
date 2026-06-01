@@ -418,7 +418,8 @@ def process():
             "voltage": ch1_v_norm.tolist(),
         },
         "ch1_first_peak_t":  round(ch1_first_peak_t, 4),
-        "experiment_duration": round(ch3_post_b1, 4),   # seconds from B1 to end of CSV
+        "experiment_duration": round(ch3_post_b1, 4),   # seconds from B1 to END of CSV data
+        "csv_start_rel": round(float(ch3_times[0] - t_buzz1_csv), 4),  # CSV START rel. to B1 (≤ 0)
         "t_buzz1_csv":  float(t_buzz1_csv),
         "t_buzz2_csv":  float(ch3_times[-1]),             # end of recording (default trim end)
         "all_buzz_rel": all_buzz_rel,
@@ -535,19 +536,39 @@ def export():
     os.makedirs(out_dir, exist_ok=True)
     output_files = []
 
+    # --- Clamp the trim window to where CSV samples actually exist ----------------
+    # The camera usually keeps recording after the Phidget sensor log ends, so the
+    # video can fill a delta that the CSV can't.  Clamp the requested absolute
+    # window [t_buzz1_csv, t_buzz2_csv] to the CH3 CSV's real first/last timestamps,
+    # then derive ONE effective duration used for BOTH the videos and the CSVs so
+    # the outputs are always identical length.
+    eff_t1 = float(t_buzz1_csv)
+    eff_t2 = float(t_buzz2_csv)
+    try:
+        _ch3_t = (pd.read_csv(os.path.join(session_dir, ch3_file))
+                  .iloc[:, 0].astype(str).map(_timestr_to_seconds).astype(float))
+        eff_t1 = max(eff_t1, float(_ch3_t.min()))
+        eff_t2 = min(eff_t2, float(_ch3_t.max()))
+    except Exception:
+        pass
+    left_shift   = eff_t1 - float(t_buzz1_csv)   # ≥ 0, normally 0
+    eff_duration = eff_t2 - eff_t1               # ≤ requested delta
+    if cut_duration:
+        eff_duration = min(float(cut_duration), eff_duration)
+    if eff_duration <= 0:
+        return jsonify({"error": "Trim window does not overlap the CSV data."}), 400
+
     # --- Trim videos with ffmpeg ---
-    # vid_start / vid_end are the master-time trim window mapped back to video time
-    # (computed in the frontend as: masterToVideo(trimStart/End, videoData[i]))
+    # vid_start is the trim-window start mapped to this video's time; both video and
+    # CSV use eff_duration so every output is exactly the same length.
     for vid in videos:
         fname = vid.get("filename")
-        b1 = float(vid.get("vid_start", vid.get("buzz1_vid", 0)))
-        b2 = float(vid.get("vid_end",   vid.get("buzz2_vid", b1 + 1)))
+        b1 = float(vid.get("vid_start", vid.get("buzz1_vid", 0))) + left_shift
+        b2 = b1 + eff_duration
 
-        # Clip length = user's delta.  Prefer the explicit cut_duration so the
-        # output is identical across all videos and exactly the chosen delta.
-        duration = float(cut_duration) if cut_duration else (b2 - b1)
-        if duration <= 0:
-            return jsonify({"error": f"Invalid trim window for '{fname}': duration ({duration:.3f}s) must be > 0."}), 400
+        # Single effective duration (already clamped to the CSV data extent)
+        # so the video clip and the CSV clip are guaranteed the same length.
+        duration = eff_duration
 
         # Negative start can happen if the trim window begins before this video's
         # B1; clamp to 0 but keep the duration so the clip is still delta-long.
@@ -595,7 +616,8 @@ def export():
             df = pd.read_csv(in_path)
             time_col = df.columns[0]
             times_sec = df[time_col].astype(str).map(_timestr_to_seconds).astype(float)
-            mask = (times_sec >= float(t_buzz1_csv)) & (times_sec <= float(t_buzz2_csv))
+            # Use the SAME clamped window as the videos so lengths always match.
+            mask = (times_sec >= eff_t1) & (times_sec <= eff_t2)
             trimmed = df[mask].copy()
 
             base, ext = os.path.splitext(csv_file)

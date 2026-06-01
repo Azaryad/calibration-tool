@@ -344,6 +344,32 @@ input[type="file"]::file-selector-button {
   display: block;
   max-height: 310px;
 }
+/* ── Plyr dark-theme overrides ───────────────────────────────────────────── */
+.video-wrapper .plyr {
+  --plyr-color-main: #2d6fa8;
+  --plyr-video-background: #06090f;
+  --plyr-control-icon-size: 16px;
+  --plyr-control-spacing: 7px;
+  --plyr-font-size-base: 12px;
+  --plyr-font-size-small: 11px;
+  border-radius: 7px;
+  border: 1px solid #1a2a40;
+}
+/* time display — millisecond precision */
+.video-wrapper .plyr__time {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.74rem;
+  letter-spacing: 0.01em;
+}
+/* thin gradient control bar */
+.video-wrapper .plyr__controls {
+  padding: 4px 8px 5px;
+  background: linear-gradient(transparent, rgba(4,8,16,0.78));
+}
+/* keep video filling the wrapper width */
+.video-wrapper .plyr--video {
+  width: 100%;
+}
 
 /* Controls */
 .controls {
@@ -645,6 +671,9 @@ input[type="file"]::file-selector-button {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<!-- Plyr v3 — professional HTML5 video player (sampotts/plyr, ~27k stars) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3/dist/plyr.css">
+<script src="https://cdn.jsdelivr.net/npm/plyr@3/dist/plyr.min.js"></script>
 <script>
 "use strict";
 
@@ -653,8 +682,9 @@ let sessionId   = null;
 let appData     = null;
 let ch3Times    = [];
 let ch3Volts    = [];
-let videoData   = [];   // [{filename, offset, buzz1_vid, buzz2_vid}, ...]
-let allVideos   = [];   // HTMLVideoElement[]
+let videoData    = [];   // [{filename, offset, buzz1_vid, buzz2_vid}, ...]
+let allVideos    = [];   // HTMLVideoElement[] (raw <video> refs, even when Plyr is active)
+let plyrPlayers  = [];   // Plyr[] instances — parallel to allVideos
 let chart       = null;
 let isPlaying   = false;
 let isScrubbing = false;
@@ -1343,32 +1373,50 @@ function initViewer(data) {
     wc.innerHTML = "";
   }
 
-  // Videos
+  // Videos — wrap with Plyr for professional controls (volume, fullscreen, ms time display)
   const container = document.getElementById("videos-container");
   container.innerHTML = "";
-  allVideos = [];
+  plyrPlayers.forEach(p => { try { p.destroy(); } catch(_) {} });
+  plyrPlayers = [];
+  allVideos   = [];
 
   const nv = videoData.length;
   const vw = Math.min(520, Math.max(220, Math.floor((window.innerWidth - 60) / nv) - 14));
 
   videoData.forEach(vd => {
-    const wrap  = document.createElement("div");
+    const wrap = document.createElement("div");
     wrap.className = "video-wrapper";
+    wrap.style.width = vw + "px";
 
     const lbl = document.createElement("div");
     lbl.className = "video-label";
-    lbl.style.maxWidth = vw + "px";
     lbl.textContent = vd.filename;
 
     const vid = document.createElement("video");
-    vid.src = `/video/${sessionId}/${encodeURIComponent(vd.filename)}`;
-    vid.style.width = vw + "px";
-    vid.preload = "auto";
+    vid.src       = `/video/${sessionId}/${encodeURIComponent(vd.filename)}`;
+    vid.preload   = "auto";
     vid.playsInline = true;
 
     wrap.append(lbl, vid);
     container.appendChild(wrap);
-    allVideos.push(vid);
+
+    if (window.Plyr) {
+      const player = new Plyr(vid, {
+        // Show per-video: volume, mute, current-time (ms accurate), fullscreen only.
+        // Global play/pause is driven by our shared play-pause-btn + speed row.
+        controls: ['mute', 'volume', 'current-time', 'duration', 'fullscreen'],
+        fullscreen:    { enabled: true, fallback: true, iosNative: false },
+        storage:       { enabled: false },
+        keyboard:      { focused: false, global: false },
+        tooltips:      { controls: true, seek: false },
+        hideControls:  false,
+        invertTime:    false,
+      });
+      plyrPlayers.push(player);
+      allVideos.push(player.media);   // player.media === the original <video> element
+    } else {
+      allVideos.push(vid);
+    }
   });
 
   slider.min   = 0;
@@ -1867,11 +1915,16 @@ slider.addEventListener("input", e => {
 
 playPauseBtn.addEventListener("click", () => {
   if (isPlaying) {
-    allVideos.forEach(v => v.pause());
+    if (plyrPlayers.length) plyrPlayers.forEach(p => p.pause());
+    else allVideos.forEach(v => v.pause());
     isPlaying = false;
     playPauseBtn.textContent = "▶ Play";
   } else {
-    allVideos.forEach(v => { v.playbackRate = playbackRate; v.play().catch(() => {}); });
+    if (plyrPlayers.length) {
+      plyrPlayers.forEach(p => { p.speed = playbackRate; p.play().catch(() => {}); });
+    } else {
+      allVideos.forEach(v => { v.playbackRate = playbackRate; v.play().catch(() => {}); });
+    }
     isPlaying = true;
     playPauseBtn.textContent = "⏸ Pause";
   }
@@ -1883,7 +1936,11 @@ document.querySelectorAll(".speed-btn").forEach(btn => {
     playbackRate = parseFloat(btn.dataset.rate);
     document.querySelectorAll(".speed-btn").forEach(b =>
       b.classList.toggle("active", b === btn));
-    allVideos.forEach(v => { v.playbackRate = playbackRate; });
+    if (plyrPlayers.length) {
+      plyrPlayers.forEach(p => { try { p.speed = playbackRate; } catch(_) { p.media.playbackRate = playbackRate; } });
+    } else {
+      allVideos.forEach(v => { v.playbackRate = playbackRate; });
+    }
   });
 });
 
@@ -1928,6 +1985,8 @@ window.addEventListener("popstate", () => {
 resetBtn.addEventListener("click", () => {
   allVideos.forEach(v => { v.pause(); v.src = ""; });
   allVideos = [];
+  plyrPlayers.forEach(p => { try { p.destroy(); } catch(_) {} });
+  plyrPlayers = [];
   calVideos.forEach(c => {
     c.video.pause(); c.video.removeAttribute("src"); c.video.load();
     if (c.wsInstance) { try { c.wsInstance.destroy(); } catch(_) {} }

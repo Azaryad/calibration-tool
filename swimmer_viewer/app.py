@@ -518,6 +518,7 @@ def export():
     videos = body.get("videos", [])
     t_buzz1_csv = body.get("t_buzz1_csv")
     t_buzz2_csv = body.get("t_buzz2_csv")
+    cut_duration = body.get("cut_duration")   # authoritative clip length (= csvDelta)
 
     if not all([session_id, ch1_file, ch3_file, videos]) or t_buzz1_csv is None or t_buzz2_csv is None:
         return jsonify({"error": "Missing required parameters."}), 400
@@ -541,8 +542,17 @@ def export():
         fname = vid.get("filename")
         b1 = float(vid.get("vid_start", vid.get("buzz1_vid", 0)))
         b2 = float(vid.get("vid_end",   vid.get("buzz2_vid", b1 + 1)))
-        if b2 <= b1:
-            return jsonify({"error": f"Invalid trim window for '{fname}': end ({b2:.3f}s) must be > start ({b1:.3f}s)."}), 400
+
+        # Clip length = user's delta.  Prefer the explicit cut_duration so the
+        # output is identical across all videos and exactly the chosen delta.
+        duration = float(cut_duration) if cut_duration else (b2 - b1)
+        if duration <= 0:
+            return jsonify({"error": f"Invalid trim window for '{fname}': duration ({duration:.3f}s) must be > 0."}), 400
+
+        # Negative start can happen if the trim window begins before this video's
+        # B1; clamp to 0 but keep the duration so the clip is still delta-long.
+        if b1 < 0:
+            b1 = 0.0
 
         in_path = os.path.join(session_dir, fname)
         if not os.path.isfile(in_path):
@@ -552,39 +562,31 @@ def export():
         out_name = f"{base}_trimmed{ext}"
         out_path = os.path.join(out_dir, out_name)
 
-        # Fast path: stream copy (keyframe-aligned, may have a few frames slack)
-        cmd_copy = [
+        # FRAME-ACCURATE cut, always re-encoded.
+        #   -ss before -i : seek to the keyframe near b1, then decode forward to
+        #                   the EXACT timestamp (accurate because we re-encode).
+        #   -t  duration  : emit exactly `duration` seconds → length == delta.
+        # Stream-copy (-c copy) is intentionally NOT used: it can only cut on
+        # keyframes, which would start the clip early and make it longer than the
+        # delta (off by up to one GOP, often 1-2 s).
+        cmd = [
             ffmpeg_path, "-y",
-            "-ss", str(b1), "-to", str(b2),
+            "-ss", f"{b1:.6f}",
             "-i", in_path,
-            "-c", "copy",
+            "-t", f"{duration:.6f}",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-c:a", "aac",
+            "-movflags", "+faststart",
             out_path,
         ]
-        result = subprocess.run(cmd_copy, capture_output=True, text=True, timeout=600)
-        copy_ok = (
-            result.returncode == 0
-            and os.path.isfile(out_path)
-            and os.path.getsize(out_path) > 1000
-        )
-
-        if not copy_ok:
-            # Frame-accurate fallback: re-encode
-            cmd_enc = [
-                ffmpeg_path, "-y",
-                "-i", in_path,
-                "-ss", str(b1), "-to", str(b2),
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                "-c:a", "aac",
-                out_path,
-            ]
-            result = subprocess.run(cmd_enc, capture_output=True, text=True, timeout=1200)
-            if result.returncode != 0:
-                return jsonify({
-                    "error": f"Failed to trim '{fname}': {result.stderr[-400:]}"
-                }), 400
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        if result.returncode != 0:
+            return jsonify({
+                "error": f"Failed to trim '{fname}': {result.stderr[-400:]}"
+            }), 400
 
         output_files.append(out_path)
-        logger.info("Trimmed %s [%.3f → %.3f s]", fname, b1, b2)
+        logger.info("Trimmed %s [start=%.3f s, duration=%.3f s]", fname, b1, duration)
 
     # --- Trim CSVs (keep original timestamp format) ---
     for csv_file in (ch1_file, ch3_file):

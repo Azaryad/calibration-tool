@@ -1434,12 +1434,14 @@ finishBtn.addEventListener("click", async () => {
         ch3_file: appData.ch3_file,
         t_buzz1_csv: appData.t_buzz1_csv,
         t_buzz2_csv: appData.t_buzz2_csv,
-        // vid_start / vid_end = user's page-3 trim window mapped to video time
-        videos: videoData.map(v => ({
-          filename:  v.filename,
-          vid_start: masterToVideo(trimWindowStart,            v),
-          vid_end:   masterToVideo(trimWindowStart + csvDelta, v),
-        })),
+        // vid_start = where the trim window begins in this video's time.
+        // vid_end is forced to vid_start + csvDelta so the clip is EXACTLY the
+        // delta length (no float drift, no rate scaling).
+        videos: videoData.map(v => {
+          const vs = masterToVideo(trimWindowStart, v);
+          return { filename: v.filename, vid_start: vs, vid_end: vs + csvDelta };
+        }),
+        cut_duration: csvDelta,   // authoritative clip length for the server
       }),
     });
 
@@ -1984,24 +1986,19 @@ function updateDot(masterTime) {
 }
 
 // ── Sync ───────────────────────────────────────────────────────────────────
-// Two-point sync: B1 and B2 set on page 2 anchor two known moments in the
-// video to two known moments in the CSV.
-//   video buzz1_vid  ↔  master 0             (CSV t_buzz1_csv)
-//   video buzz2_vid  ↔  master csvB2Rel      (last detected buzzer in CSV)
-// csvB2Rel = all_buzz_rel[-1] (detected with 0.4 s min-sep → catches all
-// individual buzzer events including end-group ones).
-let csvB2Rel = 0;   // set in initViewer from appData.all_buzz_rel
+// Single-point sync.  B1 (buzz1_vid) is the one reliable anchor: the video
+// timestamp that corresponds to CSV master t = 0.  Cameras and the Phidget DAQ
+// both record in true wall-clock seconds, so 1 video-second == 1 CSV-second —
+// no rate scaling is applied.  This guarantees a trim of master-width W produces
+// a video clip of EXACTLY W seconds, cut at exactly the chosen instant.
+//
+// (B2 on page 2 is kept only as a visual sanity check / Δ guide — it does NOT
+//  scale the time axis.  The previous two-point scaling multiplied every clip by
+//  (buzz2_vid-buzz1_vid)/csvB2Rel, which distorted both length and start time.)
+let csvB2Rel = 0;   // retained for display only; not used in the mapping
 
-function videoToMaster(vt, vd) {
-  const vdur = vd.buzz2_vid - vd.buzz1_vid;
-  if (!vdur || vdur <= 0 || !csvB2Rel) return vt - vd.buzz1_vid;
-  return (vt - vd.buzz1_vid) * csvB2Rel / vdur;
-}
-function masterToVideo(mt, vd) {
-  const vdur = vd.buzz2_vid - vd.buzz1_vid;
-  if (!vdur || vdur <= 0 || !csvB2Rel) return vd.buzz1_vid + mt;
-  return vd.buzz1_vid + mt * vdur / csvB2Rel;
-}
+function videoToMaster(vt, vd) { return vt - vd.buzz1_vid; }
+function masterToVideo(mt, vd) { return vd.buzz1_vid + mt; }
 
 function masterTime() {
   return videoToMaster(allVideos[0].currentTime, videoData[0]);

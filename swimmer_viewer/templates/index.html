@@ -485,6 +485,8 @@ input[type="file"]::file-selector-button {
 #force-chart { cursor: grab; user-select: none; }
 #force-chart.dragging { cursor: grabbing; }
 </style>
+<!-- Plyr CSS in <head> so controls render before first paint -->
+<link rel="stylesheet" href="/static/plyr.css">
 <!-- WaveSurfer.js v7 — research-grade interactive waveform (katspaugh/wavesurfer.js) -->
 <script type="module">
   try {
@@ -670,10 +672,9 @@ input[type="file"]::file-selector-button {
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<!-- Plyr v3 — professional HTML5 video player (sampotts/plyr, ~27k stars) -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3/dist/plyr.css">
-<script src="https://cdn.jsdelivr.net/npm/plyr@3/dist/plyr.min.js"></script>
+<script src="/static/chart.umd.min.js"></script>
+<!-- Plyr v3 — professional HTML5 video player (sampotts/plyr, ~27k stars) — served locally -->
+<script src="/static/plyr.min.js"></script>
 <script>
 "use strict";
 

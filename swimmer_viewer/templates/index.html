@@ -1224,11 +1224,6 @@ function initCalibration(data) {
     };
     calVideos.push(cv);
 
-    // Restore playback rate after every play event (Plyr resets rate on seek+resume)
-    videoEl.addEventListener("play", () => {
-      if (videoEl.playbackRate !== cv.currentRate) videoEl.playbackRate = cv.currentRate;
-    });
-
     // Anchor radio change → redraw markers
     anchorRadios.forEach(r => r.addEventListener("change", () => _updateCalMarkers(cv)));
 
@@ -1549,10 +1544,6 @@ function initViewer(data) {
   // Events
   allVideos[0].addEventListener("timeupdate", onTimeUpdate);
   allVideos.forEach(v => {
-    // Restore chosen playback rate after every seek/resume — Plyr resets it to 1 on seek
-    v.addEventListener("play", () => {
-      if (v.playbackRate !== playbackRate) v.playbackRate = playbackRate;
-    });
     v.addEventListener("ended", () => {
       isPlaying = false;
       playPauseBtn.textContent = "▶ Play";

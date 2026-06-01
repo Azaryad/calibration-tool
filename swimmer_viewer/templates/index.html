@@ -915,9 +915,63 @@ function getFilterParams() {
 
 // ── WaveSurfer calibration waveform ────────────────────────────────────────
 
+// Compute how many bins to request for the current zoom window.
+// At full view: 2000 bins. As window shrinks, bins-per-second increases
+// proportionally (capped at 4000 — above that we hit audio sample-rate limits).
+function _computeWsBins(cv) {
+  const origDur = cv.wsOrigDur || 1;
+  const viewDur = cv.wsViewDur || origDur;
+  const px      = (cv.wsContainer ? cv.wsContainer.offsetWidth : 800) || 800;
+  const byPixel  = px * 3;                               // ≤ 3 samples per px
+  const byFactor = Math.round(2000 * origDur / viewDur); // scale with zoom
+  return Math.max(500, Math.min(4000, Math.min(byPixel, byFactor)));
+}
+
+// Fetch bins for exactly the current view window from the server.
+async function _fetchWindowWaveform(cv) {
+  const t0      = cv.wsViewStart || 0;
+  const t1      = t0 + (cv.wsViewDur || 999999);
+  const n_bins  = _computeWsBins(cv);
+  const filterQ = getFilterParams();
+  const url = `/cal_waveform/${sessionId}/${encodeURIComponent(cv.filename)}?t_start=${t0.toFixed(4)}&t_end=${t1.toFixed(4)}&n_bins=${n_bins}${filterQ}`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;  // { bins, t0, t1, total_dur }
+}
+
+// Debounced re-fetch — called on zoom, scroll, filter change.
+function _scheduleWsFetch(cv, delay = 150) {
+  clearTimeout(cv._wsFetchTimer);
+  cv._wsFetchTimer = setTimeout(() => _doWsFetch(cv), delay);
+}
+
+async function _doWsFetch(cv) {
+  if (!cv.wsInstance) return;
+  try {
+    const data = await _fetchWindowWaveform(cv);
+    // Reload WaveSurfer in-place with new windowed peaks.
+    // Empty URL → WaveSurfer uses channelData path, no audio decode needed.
+    await cv.wsInstance.load('', [data.bins], cv.wsViewDur);
+    // Re-seek cursor to current video position within the new window
+    const ct = cv.video.currentTime;
+    const pr = (ct - cv.wsViewStart) / cv.wsViewDur;
+    cv.wsInstance.seekTo(Math.max(0, Math.min(1, pr)));
+    // Re-draw markers (they are in window-relative coordinates)
+    _updateCalMarkers(cv);
+    // Update zoom label
+    if (cv.zoomDurEl) {
+      const vd = cv.wsViewDur;
+      cv.zoomDurEl.textContent = (cv.wsViewDur >= cv.wsOrigDur - 0.01)
+        ? "full"
+        : (vd >= 1 ? vd.toFixed(2) + " s" : (vd * 1000).toFixed(1) + " ms");
+    }
+  } catch(e) { /* silent on abort */ }
+}
+
 async function _fetchFullWaveform(cv) {
   const filterQ = getFilterParams();
-  const url = `/cal_waveform/${sessionId}/${encodeURIComponent(cv.filename)}?t_start=0&t_end=999999&n_bins=4000${filterQ}`;
+  const url = `/cal_waveform/${sessionId}/${encodeURIComponent(cv.filename)}?t_start=0&t_end=999999&n_bins=2000${filterQ}`;
   const res  = await fetch(url);
   const data = await res.json();
   if (data.error) throw new Error(data.error);
@@ -936,22 +990,26 @@ function _buildWaveSurfer(cv, data) {
   const container = cv.wsContainer;
   container.innerHTML = "";   // clear any previous DOM
 
+  // Initialise window-tracking state
+  cv.wsOrigDur   = data.total_dur;
+  if (!cv.wsViewDur)   cv.wsViewDur   = data.total_dur; // full view on first build
+  if (!cv.wsViewStart) cv.wsViewStart = 0;
+
   const wsInst = WaveSurfer.create({
     container,
-    // No `url` or `media` — display-only; we sync cursor manually from the video
     peaks:    [data.bins],
-    duration: data.total_dur,
+    duration: cv.wsViewDur,   // WaveSurfer time axis = current window duration
     waveColor:      "#2d6fa8",
-    progressColor:  "#0a0f1a",   // hide progress fill; cursor is enough
+    progressColor:  "#0a0f1a",
     cursorColor:    "rgba(255,255,255,0.75)",
     cursorWidth:    1.5,
     height:         96,
     normalize:      false,
     fillParent:     true,
     interact:       true,
-    autoScroll:     true,
-    autoCenter:     true,
-    minPxPerSec:    Math.max(8, Math.min(80, (container.offsetWidth || 800) / Math.max(1, data.total_dur))),
+    autoScroll:     false,   // we handle view window manually
+    autoCenter:     false,
+    minPxPerSec:    Math.max(8, Math.min(80, (container.offsetWidth || 800) / Math.max(0.001, cv.wsViewDur))),
     barWidth:       2,
     barGap:         1,
     barRadius:      2,
@@ -964,9 +1022,9 @@ function _buildWaveSurfer(cv, data) {
   cv.wsRegions   = regPlugin;
   cv.wfTotalDur  = data.total_dur;
 
-  // Click / interaction → seek video
+  // Click / interaction → seek video (WaveSurfer time is window-relative)
   wsInst.on("interaction", t => {
-    cv.video.currentTime = Math.max(0, Math.min(t, cv.video.duration || 1e9));
+    cv.video.currentTime = Math.max(0, Math.min(cv.wsViewStart + t, cv.video.duration || 1e9));
   });
 
   // Draw initial markers
@@ -1028,27 +1086,34 @@ function _drawCanvasFallback(cv) {
 function _updateCalMarkers(cv) {
   if (!cv.wsRegions) { if (cv.wfCanvas) _drawCanvasFallback(cv); return; }
 
-  const dur = cv.wfTotalDur || 1;
-  const b1  = parseFloat(cv.inp1.value);
-  const b2  = parseFloat(cv.inp2.value);
+  // All times in WaveSurfer coords are WINDOW-RELATIVE:
+  //   wsTime = videoTime - cv.wsViewStart
+  const winStart = cv.wsViewStart || 0;
+  const winDur   = cv.wsViewDur   || cv.wfTotalDur || 1;
+  const b1 = parseFloat(cv.inp1.value);
+  const b2 = parseFloat(cv.inp2.value);
 
   cv.wsRegions.clearRegions();
 
-  function addMarker(t, color, label, draggable) {
-    if (!isFinite(t) || t < 0 || t > dur) return null;
+  // videoT → wsT, returns null if outside visible window
+  function addMarker(videoT, color, label, draggable) {
+    if (!isFinite(videoT)) return null;
+    const wsT = videoT - winStart;
+    if (wsT < -0.1 || wsT > winDur + 0.1) return null;
     return cv.wsRegions.addRegion({
-      start: Math.max(0, t - 0.03),
-      end:   Math.min(dur, t + 0.03),
+      start: Math.max(0, wsT - 0.03),
+      end:   Math.min(winDur, wsT + 0.03),
       color, drag: draggable, resize: false, content: label,
     });
   }
 
   const r1 = addMarker(b1, "rgba(255,80,80,0.5)",  "B1", true);
   const r2 = addMarker(b2, "rgba(51,238,119,0.5)", "B2", true);
-  if (r1) r1.on("update-end", () => { cv.inp1.value = ((r1.start+r1.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
-  if (r2) r2.on("update-end", () => { cv.inp2.value = ((r2.start+r2.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
+  // When dragged, convert back from window-relative to video time
+  if (r1) r1.on("update-end", () => { cv.inp1.value = (winStart + (r1.start+r1.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
+  if (r2) r2.on("update-end", () => { cv.inp2.value = (winStart + (r2.start+r2.end)/2).toFixed(3); validateCal(); _updateCalMarkers(cv); });
 
-  // Orange Δ line — shows expected B2 location based on cal-delta-input (pre-filled from CSV)
+  // Orange Δ line
   const refDelta = parseFloat(document.getElementById("cal-delta-input").value) || 0;
   if (refDelta > 0 && isFinite(b1)) {
     const deltaT = b1 + refDelta;
@@ -1068,15 +1133,15 @@ async function initCalVideoWaveSurfer(cv) {
 }
 
 async function refreshCalWaveform(cv) {
-  try {
-    const data = await _fetchFullWaveform(cv);
-    if (cv.wsInstance) {
-      // Reload peaks into existing WaveSurfer (destroy+rebuild to avoid state issues)
-      _buildWaveSurfer(cv, data);
-    } else {
+  // Re-fetch the current window with the new filter applied
+  if (cv.wsInstance) {
+    _scheduleWsFetch(cv, 0);
+  } else {
+    try {
+      const data = await _fetchFullWaveform(cv);
       _buildCanvasFallback(cv, data);
-    }
-  } catch(e) { /* silent */ }
+    } catch(e) { /* silent */ }
+  }
 }
 
 let _filterRefreshTimer = null;
@@ -1199,19 +1264,32 @@ function initCalibration(data) {
       filename: vd.filename, wsContainer, plyrCal,
       zoomSlider, zoomDurEl,
       currentRate: 1.0,
-      wsInstance: null, wsRegions: null,
+      wsInstance:   null, wsRegions:  null,
+      wsOrigDur:    null,  // total video recording duration
+      wsViewStart:  0,     // current window left edge in video time
+      wsViewDur:    null,  // current window width (null = full)
+      _wsFetchTimer: null,
       wfCanvas: null,
       wfTotalDur: null, wfBins: null, wfFetchT0: 0, wfFetchT1: 0,
       deltaInfoEl,
     };
     calVideos.push(cv);
 
-    // Video timeupdate → sync WaveSurfer cursor
+    // Video timeupdate → move WaveSurfer cursor; auto-pan if outside window
     videoEl.addEventListener("timeupdate", () => {
-      curTime.textContent = videoEl.currentTime.toFixed(3) + " s";
-      if (cv.wsInstance && cv.wfTotalDur > 0) {
-        const progress = Math.min(1, videoEl.currentTime / cv.wfTotalDur);
-        cv.wsInstance.seekTo(progress);
+      const ct = videoEl.currentTime;
+      curTime.textContent = ct.toFixed(3) + " s";
+      if (cv.wsInstance && cv.wsOrigDur > 0) {
+        const winStart = cv.wsViewStart;
+        const winDur   = cv.wsViewDur || cv.wsOrigDur;
+        const progress = (ct - winStart) / winDur;
+        if (progress < -0.05 || progress > 1.05) {
+          // Video moved outside the visible window — re-centre and re-fetch
+          cv.wsViewStart = Math.max(0, Math.min(ct - winDur / 2, cv.wsOrigDur - winDur));
+          _scheduleWsFetch(cv, 120);
+        } else {
+          cv.wsInstance.seekTo(Math.max(0, Math.min(1, progress)));
+        }
       } else if (cv.wfCanvas) {
         _drawCanvasFallback(cv);
       }
@@ -1253,24 +1331,28 @@ function initCalibration(data) {
       videoEl.currentTime = Math.min(videoEl.duration || 1e9, videoEl.currentTime + 1/30);
     });
 
-    // Zoom slider → WaveSurfer zoom (same exponential scale as old canvas zoom)
+    // Zoom slider → fetch higher-resolution data for the visible window
+    // (same exponential scale as old canvas; same visual = genuine data resolution)
     zoomSlider.addEventListener("input", () => {
-      if (!cv.wsInstance || !cv.wfTotalDur) return;
+      if (!cv.wsOrigDur) return;
       const val    = parseInt(zoomSlider.value);
-      const maxDur = cv.wfTotalDur;
+      const maxDur = cv.wsOrigDur;
       let viewDur;
       if (val === 0) {
         viewDur = maxDur;
         zoomDurEl.textContent = "full";
       } else {
-        // Exponential: val=1000 → ~60 ms window, val=0 → full duration
         viewDur = maxDur * Math.pow((1 / 60) / maxDur, val / 1000);
         zoomDurEl.textContent = viewDur >= 1
           ? viewDur.toFixed(2) + " s"
           : (viewDur * 1000).toFixed(1) + " ms";
       }
-      const containerW = wsContainer.offsetWidth || 800;
-      cv.wsInstance.zoom(containerW / viewDur);
+      // Centre window on current video position
+      const ct = cv.video.currentTime;
+      cv.wsViewStart = Math.max(0, Math.min(ct - viewDur / 2, maxDur - viewDur));
+      cv.wsViewDur   = viewDur;
+      // Debounce: fetch after slider settles (150 ms avoids hammering the server)
+      _scheduleWsFetch(cv, 150);
     });
 
     // Kick off WaveSurfer initialisation asynchronously

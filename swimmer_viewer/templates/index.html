@@ -201,6 +201,25 @@ input[type="file"]::file-selector-button {
   border-radius: 6px;
   display: block;
 }
+/* Plyr inside calibration cards */
+.cal-video-card .plyr {
+  --plyr-color-main: #2d6fa8;
+  --plyr-video-background: #06090f;
+  --plyr-control-icon-size: 16px;
+  --plyr-control-spacing: 7px;
+  --plyr-font-size-base: 12px;
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid #1a2a40;
+}
+.cal-video-card .plyr__controls {
+  padding: 4px 8px 5px;
+  background: linear-gradient(transparent, rgba(4,8,16,0.78));
+}
+.cal-video-card .plyr__time {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.74rem;
+}
 .cal-row {
   margin-top: 12px;
   display: flex;
@@ -1105,7 +1124,7 @@ function initCalibration(data) {
     card.className = "cal-video-card";
     card.innerHTML = `
       <h3>🎬 ${esc(vd.filename)}</h3>
-      <video src="/video/${sessionId}/${encodeURIComponent(vd.filename)}" controls preload="auto" playsinline></video>
+      <video src="/video/${sessionId}/${encodeURIComponent(vd.filename)}" preload="auto" playsinline></video>
       <div class="cal-row">
         <span>Current: <span class="cur-time">0.00 s</span></span>
         <button class="cal-set-btn" data-which="1">Set Buzzer 1</button>
@@ -1140,9 +1159,23 @@ function initCalibration(data) {
     const anchorRadios = card.querySelectorAll(`input[name="anchor-${idx}"]`);
     const deltaInfoEl  = card.querySelector(`#delta-line-info-${idx}`);
 
+    // Wrap video with Plyr — full controls (play, seek, volume, fullscreen)
+    let plyrCal = null;
+    if (window.Plyr) {
+      plyrCal = new Plyr(videoEl, {
+        controls: ['play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'fullscreen'],
+        fullscreen:   { enabled: true, fallback: true, iosNative: false },
+        storage:      { enabled: false },
+        keyboard:     { focused: true, global: false },
+        tooltips:     { controls: true, seek: true },
+        invertTime:   false,
+        hideControls: false,
+      });
+    }
+
     const cv = {
       video: videoEl, inp1, inp2, statusEl, curTime,
-      filename: vd.filename, wsContainer,
+      filename: vd.filename, wsContainer, plyrCal,
       wsInstance: null, wsRegions: null,
       wfCanvas: null,
       wfTotalDur: null, wfBins: null, wfFetchT0: 0, wfFetchT1: 0,
@@ -1254,7 +1287,7 @@ document.getElementById("cal-continue-btn").addEventListener("click", () => {
     return "b1";
   });
   // Pause/clear cal videos to free decoders
-  calVideos.forEach(c => { c.video.pause(); c.video.removeAttribute("src"); c.video.load(); });
+  calVideos.forEach(c => { if (c.plyrCal) { try { c.plyrCal.destroy(); } catch(_) {} } c.video.pause(); c.video.removeAttribute("src"); c.video.load(); });
   calVideos = [];
   document.getElementById("calibrate-section").style.display = "none";
   initViewer(pendingResult);
@@ -1263,7 +1296,7 @@ document.getElementById("cal-continue-btn").addEventListener("click", () => {
 });
 
 document.getElementById("cal-back-btn").addEventListener("click", () => {
-  calVideos.forEach(c => { c.video.pause(); c.video.removeAttribute("src"); c.video.load(); });
+  calVideos.forEach(c => { if (c.plyrCal) { try { c.plyrCal.destroy(); } catch(_) {} } c.video.pause(); c.video.removeAttribute("src"); c.video.load(); });
   calVideos = [];
   document.getElementById("cal-videos-list").innerHTML = "";
   document.getElementById("calibrate-section").style.display = "none";
@@ -1989,8 +2022,9 @@ resetBtn.addEventListener("click", () => {
   plyrPlayers.forEach(p => { try { p.destroy(); } catch(_) {} });
   plyrPlayers = [];
   calVideos.forEach(c => {
+    if (c.plyrCal)   { try { c.plyrCal.destroy();   } catch(_) {} }
+    if (c.wsInstance){ try { c.wsInstance.destroy(); } catch(_) {} }
     c.video.pause(); c.video.removeAttribute("src"); c.video.load();
-    if (c.wsInstance) { try { c.wsInstance.destroy(); } catch(_) {} }
   });
   calVideos = [];
   // Reset speed controls

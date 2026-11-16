@@ -44,6 +44,9 @@ Here the "buzzer" channel holds the **lamp voltage**, not sound.
 
 Details: [light_calibration/README.md](light_calibration/README.md)
 
+**Second version of this tool:** https://github.com/Azaryad/light-calibration-tool
+It does the same job with a different light detector. It also adds a manual step where you can adjust each segment's start and end before exporting, and it has its own setup instructions. It runs on port 5000, the same as the Swimmer Viewer, so don't run the two at once.
+
 ---
 
 ## Setup (once per computer)

@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import mimetypes
 import subprocess
@@ -195,6 +196,28 @@ def resolve_ffmpeg_executable():
     return None
 
 
+def get_video_fps(video_path):
+    """Return the frame rate of a video file as a float. Falls back to 30.0."""
+    ffmpeg_path = resolve_ffmpeg_executable()
+    if not ffmpeg_path:
+        return 30.0
+    try:
+        result = subprocess.run(
+            [ffmpeg_path, "-i", video_path],
+            capture_output=True, text=True, timeout=30
+        )
+        # ffmpeg -i writes stream info to stderr regardless of exit code
+        for pattern in (r'(\d+(?:\.\d+)?)\s+fps', r'(\d+(?:\.\d+)?)\s+tbr'):
+            m = re.search(pattern, result.stderr)
+            if m:
+                fps = float(m.group(1))
+                if 1.0 <= fps <= 240.0:
+                    return fps
+    except Exception:
+        pass
+    return 30.0
+
+
 def extract_audio(video_path, output_wav, sample_rate=AUDIO_SAMPLE_RATE):
     """Use ffmpeg to extract mono WAV from a video file."""
     ffmpeg_path = resolve_ffmpeg_executable()
@@ -367,11 +390,14 @@ def process():
             "Video '%s': buzz1_vid=%.3f s, offset=%.3f s",
             vf, t_buzz1_vid, offset
         )
+        fps = get_video_fps(video_path)
+        logger.info("Video '%s': fps=%.3f", vf, fps)
         video_results.append({
             "filename":  vf,
             "offset":    round(float(offset), 4),
             "buzz1_vid": round(float(t_buzz1_vid), 4),
             "buzz2_vid": None,   # user sets this manually on page 2
+            "fps":       round(fps, 4),
         })
 
         # Audio waveform envelope — from before B1 to end of experiment

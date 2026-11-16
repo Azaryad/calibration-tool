@@ -1259,6 +1259,7 @@ function initCalibration(data) {
         <span style="width:1px;background:#1e2d45;height:16px;align-self:center;"></span>
         <button class="frame-btn cal-frame-back" title="Step back 1 frame">◀ Frame</button>
         <button class="frame-btn cal-frame-fwd"  title="Step forward 1 frame">Frame ▶</button>
+        <span class="cal-fps-label" style="font-size:0.74rem;color:#556677;margin-left:2px;"></span>
       </div>
       <div class="cal-wf-ws"></div>
       <div class="cal-wf-zoom">
@@ -1358,12 +1359,17 @@ function initCalibration(data) {
       });
     });
 
-    // Per-card frame step (≈30 fps)
+    // Per-card frame step — use detected fps from backend, fallback 30
+    const cardFps   = (vd.fps && vd.fps > 0) ? vd.fps : 30;
+    const cardFrame = 1 / cardFps;
+    card.querySelector(".cal-fps-label").textContent = cardFps.toFixed(2) + " fps";
+    card.querySelector(".cal-frame-back").title = `Step back 1 frame (${(cardFrame * 1000).toFixed(1)} ms @ ${cardFps.toFixed(2)} fps)`;
+    card.querySelector(".cal-frame-fwd").title  = `Step forward 1 frame (${(cardFrame * 1000).toFixed(1)} ms @ ${cardFps.toFixed(2)} fps)`;
     card.querySelector(".cal-frame-back").addEventListener("click", () => {
-      videoEl.currentTime = Math.max(0, videoEl.currentTime - 1/30);
+      videoEl.currentTime = Math.max(0, videoEl.currentTime - cardFrame);
     });
     card.querySelector(".cal-frame-fwd").addEventListener("click", () => {
-      videoEl.currentTime = Math.min(videoEl.duration || 1e9, videoEl.currentTime + 1/30);
+      videoEl.currentTime = Math.min(videoEl.duration || 1e9, videoEl.currentTime + cardFrame);
     });
 
     // Zoom slider → fetch higher-resolution data for the visible window
@@ -2173,8 +2179,8 @@ document.querySelectorAll(".speed-btn").forEach(btn => {
   });
 });
 
-// ── Frame step (assumes ≈30 fps; works frame-accurately with any fps) ──────
-const FRAME_S = 1 / 30;
+// ── Frame step — derived from detected fps of first video ───────────────────
+const FRAME_S = videoData.length && videoData[0].fps > 0 ? 1 / videoData[0].fps : 1 / 30;
 
 function _stepFrame(delta) {
   if (!allVideos.length || !appData) return;
@@ -2186,6 +2192,13 @@ function _stepFrame(delta) {
   updateDot(newMT);
 }
 
+{ // update frame button tooltips with actual fps
+  const detectedFps = videoData.length && videoData[0].fps > 0 ? videoData[0].fps : 30;
+  const ms = (FRAME_S * 1000).toFixed(1);
+  const fpsLabel = detectedFps.toFixed(2) + " fps";
+  document.getElementById("frame-back-btn").title = `Step back 1 frame (${ms} ms @ ${fpsLabel})`;
+  document.getElementById("frame-fwd-btn").title  = `Step forward 1 frame (${ms} ms @ ${fpsLabel})`;
+}
 document.getElementById("frame-back-btn").addEventListener("click", () => _stepFrame(-FRAME_S));
 document.getElementById("frame-fwd-btn").addEventListener("click",  () => _stepFrame(+FRAME_S));
 

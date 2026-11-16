@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Detect light events</h1>
+<p class="muted">Picks the clearest camera as lead, full-scans it once, then confirms each
+flash in the other cameras within a ±3 s window (escalating only if needed).</p>
+
+<button id="run-btn" class="primary">Run detection</button>
+<a id="review-link" class="button" href="{{ url_for('review', job_id=job.id) }}" hidden>Go to review →</a>
+
+<h2>Progress</h2>
+<div id="log" class="logbox">idle</div>
+
+<script>
+const startUrl = "{{ url_for('detect_start', job_id=job.id) }}";
+const statusUrl = "{{ url_for('detect_status', job_id=job.id) }}";
+const logEl = document.getElementById('log');
+const runBtn = document.getElementById('run-btn');
+const reviewLink = document.getElementById('review-link');
+let timer = null;
+
+async function poll() {
+  const r = await fetch(statusUrl); const d = await r.json();
+  logEl.textContent = (d.log && d.log.length) ? d.log.join('\n') : d.state;
+  logEl.scrollTop = logEl.scrollHeight;
+  if (d.state === 'done' || d.state === 'error') {
+    clearInterval(timer); timer = null; runBtn.disabled = false;
+    if (d.state === 'done') reviewLink.hidden = false;
+  }
+}
+runBtn.addEventListener('click', async () => {
+  runBtn.disabled = true; reviewLink.hidden = true; logEl.textContent = 'starting…';
+  await fetch(startUrl, { method: 'POST' });
+  if (!timer) timer = setInterval(poll, 1200);
+});
+{% if running %}runBtn.disabled = true; timer = setInterval(poll, 1200);{% endif %}
+</script>
+{% endblock %}

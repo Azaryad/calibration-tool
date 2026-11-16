@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Mark the light ROI per camera</h1>
+<p class="muted">Draw a tight box around the lamp. <em>Auto-locate</em> finds it for you — just
+confirm or nudge. Drag inside to move, drag a corner to resize. Cameras are static, so one box
+covers the whole recording.</p>
+
+<div id="status" class="muted small"></div>
+
+{% for v in job.videos %}
+<div class="card roi-cam" data-video="{{ v.id }}"
+     data-fullw="{{ v.meta.width if v.meta else 0 }}" data-fullh="{{ v.meta.height if v.meta else 0 }}"
+     data-frame="{{ url_for('frame', job_id=job.id, video_id=v.id) }}?t={{ v.trim_start }}"
+     data-autoroi="{{ url_for('autoroi', job_id=job.id, video_id=v.id) }}"
+     {% if v.roi %}data-roi="{{ v.roi.x }},{{ v.roi.y }},{{ v.roi.w }},{{ v.roi.h }}"{% endif %}>
+  <div class="camhead">
+    <strong>{{ v.id }}</strong> — {{ v.name }}
+    <button type="button" class="auto-btn">Auto-locate light</button>
+    <span class="roi-readout muted small"></span>
+  </div>
+  <div class="roi-stage">
+    <img class="roi-frame" src="{{ url_for('frame', job_id=job.id, video_id=v.id) }}?t={{ v.trim_start }}"
+         alt="{{ v.id }} frame">
+    <div class="roi-box" hidden><span class="h tl"></span><span class="h tr"></span>
+      <span class="h bl"></span><span class="h br"></span></div>
+  </div>
+</div>
+{% endfor %}
+
+<button id="save-btn" class="primary">Save ROIs &amp; run detection →</button>
+
+<script>window.SAVE_URL = "{{ url_for('roi_save', job_id=job.id) }}";
+        window.DETECT_URL = "{{ url_for('detect', job_id=job.id) }}";</script>
+<script src="{{ url_for('static', filename='roi.js') }}"></script>
+{% endblock %}

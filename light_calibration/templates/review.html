@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Review segments</h1>
+
+{% if not results %}
+<p class="muted">No results yet. <a href="{{ url_for('detect', job_id=job.id) }}">Run detection →</a></p>
+{% else %}
+<p class="muted">
+  {{ results|selectattr('confirmed')|list|length }} of {{ results|length }} segments confirmed by
+  ≥2 cameras. Low-confidence matches were found on faint events — verify before trusting.
+</p>
+
+{% for s in results %}
+<div class="card">
+  <h2>
+    Segment {{ s.csv_index }} — {{ s.csv_key }}
+    <span class="badge {{ 'high' if s.confirmed else 'low' }}">
+      {{ 'confirmed' if s.confirmed else 'unconfirmed' }}</span>
+    <span class="muted small">CSV {{ '%.3f s'|format(s.csv_duration) }}</span>
+  </h2>
+  {% for w in s.warnings %}<div class="warn">{{ w }}</div>{% endfor %}
+  <table>
+    <tr><th>Camera</th><th>Source</th><th>Confidence</th><th>Start</th><th>End</th>
+        <th>Duration</th><th>Δ vs CSV</th><th>Notes</th></tr>
+    {% for cid, cr in s.cameras.items() %}
+    <tr>
+      <td>{{ cid }}</td><td class="muted">{{ cr.source }}</td>
+      <td><span class="badge {{ cr.confidence }}">{{ cr.confidence }}</span></td>
+      {% if cr.start_time is not none %}
+      <td>{{ '%.3f'|format(cr.start_time) }}</td><td>{{ '%.3f'|format(cr.end_time) }}</td>
+      <td>{{ '%.3f s'|format(cr.duration) }}</td>
+      <td class="{{ 'ok' if cr.delta is not none and (cr.delta|abs) < 0.2 else 'warn' }}">
+        {{ '%+.3f s'|format(cr.delta) if cr.delta is not none else '—' }}</td>
+      {% else %}<td colspan="4" class="bad">not found</td>{% endif %}
+      <td class="warn small">{{ cr.warnings|join('; ') }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endfor %}
+
+<form method="post" action="{{ url_for('export', job_id=job.id) }}">
+  <button type="submit" class="primary">Export aligned clips + CSVs (ZIP)</button>
+</form>
+<p class="muted small">Each clip is cut at its camera's detected start, length = the CSV segment
+duration, re-encoded frame-accurately. CSVs are masked to the shared pulse window.</p>
+{% endif %}
+{% endblock %}

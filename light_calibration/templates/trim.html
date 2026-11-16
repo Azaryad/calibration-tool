@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Set trim start per camera</h1>
+<p class="muted">Skip the pre-test footage so scanning starts near the swims. Enter a time
+(seconds), then click <em>Preview</em> to load a single frame — videos are not fully loaded.</p>
+
+<form method="post" action="{{ url_for('trim_save', job_id=job.id) }}">
+  {% for v in job.videos %}
+  <div class="card camrow" data-video="{{ v.id }}">
+    <div class="camhead">
+      <strong>{{ v.id }}</strong> — {{ v.name }}
+      {% if v.meta %}<span class="muted">({{ '%.0f s'|format(v.meta.duration) }})</span>{% endif %}
+    </div>
+    <label>Start (s)
+      <input type="number" name="trim_{{ v.id }}" value="{{ v.trim_start }}" min="0" step="1"
+             class="trim-input">
+    </label>
+    <button type="button" class="preview-btn"
+            data-frame="{{ url_for('frame', job_id=job.id, video_id=v.id) }}">Preview</button>
+    <div class="frame-wrap"><img class="frame" alt="frame preview" hidden></div>
+  </div>
+  {% endfor %}
+  <button type="submit">Save &amp; mark ROIs →</button>
+</form>
+
+<script>
+document.querySelectorAll('.preview-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const row = btn.closest('.camrow');
+    const t = row.querySelector('.trim-input').value || 0;
+    const img = row.querySelector('.frame');
+    img.hidden = false;
+    img.src = btn.dataset.frame + '?t=' + encodeURIComponent(t) + '&_=' + Date.now();
+  });
+});
+</script>
+{% endblock %}

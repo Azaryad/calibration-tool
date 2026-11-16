@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Light Calibration{% block title %}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <header>
+    <span class="brand">Light Calibration</span>
+    {% if job %}
+    <nav class="steps">
+      <a href="{{ url_for('pairs', job_id=job.id) }}">1 · Pairs</a>
+      <a href="{{ url_for('trim', job_id=job.id) }}">2 · Trim</a>
+      <a href="{{ url_for('roi', job_id=job.id) }}">3 · ROI</a>
+      <a href="{{ url_for('detect', job_id=job.id) }}">4 · Detect</a>
+      <a href="{{ url_for('review', job_id=job.id) }}">5 · Review</a>
+    </nav>
+    {% endif %}
+  </header>
+  <main>
+    {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

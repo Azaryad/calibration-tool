@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>New calibration job</h1>
+<p class="muted">Point the tool at local folders — large videos are read in place, never copied.</p>
+
+{% for e in errors or [] %}<div class="error">{{ e }}</div>{% endfor %}
+
+<form method="post" action="{{ url_for('create') }}" class="card">
+  <label>Video folder
+    <input type="text" name="video_dir" value="{{ video_dir or '' }}"
+           placeholder="C:\path\to\camera videos" required>
+  </label>
+  <label>CSV folder
+    <input type="text" name="csv_dir" value="{{ csv_dir or '' }}"
+           placeholder="C:\path\to\buzzer and force CSVs" required>
+  </label>
+  <button type="submit">Scan folders →</button>
+</form>
+
+<p class="muted small">CSV pairs are ordered by file modified-time (not alphabetically), so test
+order is preserved. Cameras may start at slightly different times; that's expected.</p>
+{% endblock %}

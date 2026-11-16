@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Confirm CSV pairs &amp; cameras</h1>
+
+{% for w in job.warnings or [] %}<div class="warn">{{ w }}</div>{% endfor %}
+
+<h2>CSV swim segments <span class="muted">(by modified time)</span></h2>
+<table>
+  <tr><th>#</th><th>Buzzer / light CSV</th><th>Force CSV</th><th>Pulses</th><th>Segment</th><th></th></tr>
+  {% for p in job.csv_pairs %}
+  <tr>
+    <td>{{ p.index }}</td>
+    <td>{{ p.buzzer_name }}</td>
+    <td>{{ p.force_name }}</td>
+    <td class="{{ 'ok' if p.pulses == 2 else 'bad' }}">{{ p.pulses }}</td>
+    <td>{{ '%.3f s'|format(p.duration) if p.duration else '—' }}</td>
+    <td class="bad">{% for w in p.warnings %}{{ w }} {% endfor %}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Cameras</h2>
+<table>
+  <tr><th>ID</th><th>File</th><th>Resolution</th><th>FPS</th><th>Duration</th></tr>
+  {% for v in job.videos %}
+  <tr>
+    <td>{{ v.id }}</td><td>{{ v.name }}</td>
+    {% if v.meta %}
+    <td>{{ v.meta.width }}×{{ v.meta.height }}</td>
+    <td>{{ '%.2f'|format(v.meta.fps) }}</td>
+    <td>{{ '%.0f s'|format(v.meta.duration) }}</td>
+    {% else %}<td colspan="3" class="bad">could not read</td>{% endif %}
+  </tr>
+  {% endfor %}
+</table>
+
+<a class="button" href="{{ url_for('trim', job_id=job.id) }}">Set trim starts →</a>
+{% endblock %}

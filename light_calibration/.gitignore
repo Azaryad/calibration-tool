@@ -1,0 +1,6 @@
+data/jobs/
+data/*.log
+_*.log
+__pycache__/
+*.pyc
+.venv/
